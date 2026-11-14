@@ -1,0 +1,42 @@
+name: repo-backup
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '30 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python syntax check
+        run: |
+          files=$(git ls-files '*.py' | tr '\n' ' ')
+          if [ -n "$files" ]; then
+            python3 -m compileall -q $files && echo "python syntax OK"
+          else
+            echo "no python files"
+          fi
+
+      - name: Build source snapshot
+        run: |
+          mkdir -p /tmp/snap
+          name="${{ github.event.repository.name }}"
+          git archive --format=zip "HEAD" -o "/tmp/snap/${name}-$(date -u +%Y%m%d-%H%M).zip"
+          ls -lh /tmp/snap
+
+      - name: Upload snapshot (90 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-${{ github.run_id }}
+          path: /tmp/snap/*.zip
+          retention-days: 90
+          if-no-files-found: error
