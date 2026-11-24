@@ -1,0 +1,13 @@
+{
+  "name": "tg-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "三平台多端同步中心服务（Telegram / SafeXTM / LINE）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "telegram": "^2.26.22"
+  }
+}

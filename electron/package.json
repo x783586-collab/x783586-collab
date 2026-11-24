@@ -1,0 +1,19 @@
+{
+  "name": "tg-hud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A quiet multi-source notification HUD at the edge of your screen",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "imapflow": "^2.12.2",
+    "rss-parser": "^3.13.0",
+    "telegram": "^2.22.2",
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "tg-hub 多端消息",
+  "short_name": "tg-hub",
+  "description": "Telegram / SafeXTM / LINE 三平台多端同步消息挂件",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14151a",
+  "theme_color": "#14151a",
+  "icons": []
+}

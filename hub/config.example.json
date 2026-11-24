@@ -1,0 +1,17 @@
+{
+  "hubToken": "请改成一串随机长口令-各端用它连接",
+  "telegram": {
+    "apiId": 0,
+    "apiHash": "",
+    "session": "",
+    "proxy": { "enabled": false, "type": "socks5", "host": "", "port": 0, "secret": "" }
+  },
+  "safextm": {
+    "token": ""
+  },
+  "line": {
+    "token": "",
+    "secret": "",
+    "relayToken": ""
+  }
+}

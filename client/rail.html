@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tg-hub HUD</title>
+<style>
+  :root{
+    --bg:#121218; --fg:#ececf0; --muted:#8a8a94; --line:#2a2a33;
+    --tg:#2aabee; --sx:#34d399; --ln:#06c755; --red:#ef4444;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:transparent;
+    font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--fg);user-select:none;-webkit-user-select:none}
+  .hud{position:relative;height:100vh;display:flex;align-items:center;gap:9px;padding:0 10px;
+    background:linear-gradient(180deg,#191920f0,#121218f0);border:1px solid var(--line);
+    border-radius:11px;box-shadow:0 4px 18px #0007}
+  /* 系统监控区：常驻 */
+  .sys{display:flex;align-items:center;gap:8px;white-space:nowrap;flex:none}
+  .sys .kv{display:flex;align-items:baseline;gap:3px;font-size:10.5px;color:var(--muted)}
+  .sys .kv b{font-size:12px;color:#e6e6ea;font-weight:700;font-variant-numeric:tabular-nums}
+  .sys .kv.cpu b.hi{color:#ff9f43}
+  .sys .net{display:flex;flex-direction:column;gap:1px}
+  .sys .sep{width:1px;height:18px;background:var(--line)}
+  /* 连接状态点（很淡，不喧宾夺主） */
+  .status{width:5px;height:5px;border-radius:50%;background:#666;flex:none}
+  .status.online{background:#35c759}
+  .status.connecting,.status.reconnecting{background:#ffb020}
+  .status.error,.status.off{background:var(--red)}
+  /* 应用图标区：只显示有未读的来源 */
+  .apps{display:flex;align-items:center;gap:7px;flex:none}
+  .app{position:relative;width:30px;height:30px;flex:none;cursor:pointer}
+  .app .ring{position:absolute;inset:-3px;border-radius:50%;border:2px solid transparent}
+  .app.flash .ring{animation:pulse 1.3s ease-out 2;border-color:var(--c)}
+  @keyframes pulse{
+    0%{transform:scale(1);box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 55%,transparent)}
+    100%{transform:scale(1);box-shadow:0 0 0 11px color-mix(in srgb,var(--c) 0%,transparent)}}
+  .app .ic{position:absolute;inset:0;border-radius:50%;display:grid;place-items:center;
+    background:var(--c);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.2px;
+    box-shadow:0 2px 6px #0006;transition:transform .15s}
+  .app:hover .ic{transform:scale(1.1)}
+  .app .badge{position:absolute;top:-3px;right:-4px;min-width:16px;height:16px;padding:0 3px;
+    border-radius:8px;background:var(--red);color:#fff;font-size:9.5px;font-weight:800;
+    display:grid;place-items:center;line-height:1;box-shadow:0 0 0 2px var(--bg)}
+  /* 空白时的小齿轮 */
+  .gear{width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:#6a6a72;
+    font-size:14px;cursor:pointer;flex:none;padding:0}
+  .gear:hover{color:#fff;background:#ffffff12}
+  /* 悬停卡片 */
+  .bubble{position:absolute;bottom:calc(100% + 8px);right:0;width:236px;background:#1e1e26;
+    border:1px solid var(--line);border-radius:12px;padding:11px 12px;display:none;
+    box-shadow:0 8px 28px #0008;z-index:5}
+  .bubble.show{display:block;animation:pop .16s ease-out}
+  @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .bubble h4{margin:0 0 7px;font-size:12px;display:flex;justify-content:space-between}
+  .bubble h4 span{font-size:10px;color:var(--muted);font-weight:500}
+  .bubble .msg{font-size:11px;color:#cfcfd6;line-height:1.55;max-height:92px;overflow:hidden}
+  .bubble .msg div{padding:3px 0;border-bottom:1px solid #ffffff0d}
+  .bubble .msg div:last-child{border-bottom:0}
+  .bubble .hint{margin-top:7px;font-size:9.5px;color:var(--muted)}
+  /* 设置面板 */
+  .setup{position:absolute;inset:0;width:336px;padding:16px 18px;display:none;flex-direction:column;gap:8px;
+    background:#16161cf5;border-radius:11px}
+  .setup.show{display:flex}
+  .setup h3{margin:0;font-size:13px}
+  .setup label{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .setup input{width:100%;height:30px;border-radius:7px;border:1px solid var(--line);
+    background:#0e0e13;color:var(--fg);padding:0 8px;font-size:11.5px;outline:none}
+  .setup input:focus{border-color:#4a90e2}
+  .setup .row{display:flex;gap:7px;margin-top:4px}
+  .setup button{flex:1;height:30px;border:0;border-radius:7px;background:#2a7fff;color:#fff;font-size:11.5px;cursor:pointer}
+  .setup button.ghost{background:#2a2a33;color:#cfcfd6}
+  .setup .err{font-size:10.5px;color:#ff8080;min-height:14px}
+  .setup .hint{font-size:9.5px;color:var(--muted);line-height:1.5}
+</style>
+</head>
+<body>
+<div class="hud" id="hud">
+  <div class="status" id="status" title="连接状态"></div>
+  <div class="sys">
+    <div class="kv cpu" title="CPU 使用率"><span>CPU</span><b id="cpu">--</b></div>
+    <div class="sep"></div>
+    <div class="net">
+      <div class="kv" title="下行"><span style="font-size:9px">↓</span><b id="down">--</b></div>
+      <div class="kv" title="上行"><span style="font-size:9px">↑</span><b id="up">--</b></div>
+    </div>
+  </div>
+  <div class="apps" id="apps"></div>
+  <button class="gear" id="gear" title="设置">⚙</button>
+  <div class="bubble" id="bubble"></div>
+  <div class="setup" id="setup">
+    <h3>连接 Hub</h3>
+    <label>Hub 地址</label>
+    <input id="hub" placeholder="https://你的hub:8787">
+    <label>连接口令</label>
+    <input id="token" placeholder="hubToken" type="password">
+    <div class="err" id="err"></div>
+    <div class="row">
+      <button id="save">保存并连接</button>
+      <button id="back" class="ghost">返回</button>
+    </div>
+    <div class="hint">桌面与手机填同一地址和口令即可同步。</div>
+  </div>
+</div>
+<script>
+(function(){
+  "use strict";
+  var META={
+    telegram:{name:"Telegram",short:"TG",color:"var(--tg)"},
+    safextm:{name:"SafeXTM",short:"SX",color:"var(--sx)"},
+    line:{name:"LINE",short:"LN",color:"var(--ln)"}
+  };
+  var ORDER=["telegram","safextm","line"];
+  var S={hub:"",token:"",state:{rev:0,items:{},sources:{}},es:null,firstPull:true};
+
+  function $(s){return document.querySelector(s)}
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+  function api(path,opts){
+    opts=opts||{};
+    var headers=Object.assign({"X-Hub-Token":S.token},opts.headers||{}),body;
+    if(opts.json!==undefined){headers["Content-Type"]="application/json";body=JSON.stringify(opts.json)}
+    return fetch(S.hub+path,Object.assign({},opts,{headers:headers,body:body}))
+      .then(function(r){return r.json().catch(function(){return {}})});
+  }
+
+  function loadCfg(){
+    try{var c=JSON.parse(localStorage.getItem("tghub.cfg")||"{}");
+      S.hub=String(c.hub||"").replace(/\/+$/,"");S.token=c.token||""}catch(e){}
+  }
+  function saveCfg(){
+    localStorage.setItem("tghub.cfg",JSON.stringify({hub:S.hub,token:S.token}));
+    if(window.desktop&&window.desktop.saveConfig)window.desktop.saveConfig({hub:S.hub,token:S.token});
+  }
+  function applyCfg(c){if(!c)return;if(c.hub)S.hub=String(c.hub).replace(/\/+$/,"");if(c.token)S.token=c.token}
+
+  function setStatus(s){var el=$("#status");el.className="status "+(s||"");
+    el.title="连接："+(s==="online"?"已连接":s==="connecting"?"连接中":s==="reconnecting"?"重连中":s==="error"?"出错":"未连接")}
+
+  function bySid(){
+    var unread={},latest={};ORDER.forEach(function(s){unread[s]=0});
+    Object.keys(S.state.items||{}).forEach(function(k){
+      var it=S.state.items[k],sid=it.sid;if(unread[sid]===undefined)return;
+      unread[sid]+=(it.unread||0);
+      if(!latest[sid]||(it.date||0)>(latest[sid].date||0))latest[sid]=it;
+    });
+    return {unread:unread,latest:latest};
+  }
+
+  /* 关键：只渲染"有未读"的应用，没有就一个都不显示 */
+  function render(){
+    var agg=bySid(),active=ORDER.filter(function(s){return (agg.unread[s]||0)>0});
+    var box=$("#apps");
+    box.innerHTML=active.map(function(sid){
+      var n=agg.unread[sid],m=META[sid];
+      return '<div class="app" data-sid="'+sid+'" style="--c:'+m.color+'">'+
+        '<div class="ring"></div><div class="ic">'+m.short+'</div>'+
+        '<div class="badge">'+(n>99?"99+":n)+'</div></div>';
+    }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll(".app"),function(el){
+      var sid=el.dataset.sid;
+      el.addEventListener("mouseenter",function(){showBubble(sid,el)});
+      el.addEventListener("mouseleave",hideBubble);
+      el.addEventListener("click",function(){hideBubble();openDetail()});
+    });
+    resizeTo(active.length);
+  }
+
+  /* 窗口宽度：基础(系统监控+齿轮) + 每个图标 37px */
+  function resizeTo(n){
+    if(window.desktop&&window.desktop.resizeRail)window.desktop.resizeRail(n);
+  }
+
+  function flash(sids){
+    sids.forEach(function(sid,i){
+      setTimeout(function(){
+        var el=$('.app[data-sid="'+sid+'"]');if(!el)return;
+        el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");
+        setTimeout(function(){el.classList.remove("flash")},2800);
+      },i*140);
+    });
+  }
+
+  function showBubble(sid){
+    var agg=bySid(),n=agg.unread[sid]||0;
+    var msgs=Object.keys(S.state.items||{}).map(function(k){return S.state.items[k]})
+      .filter(function(x){return x.sid===sid}).sort(function(a,b){return (b.date||0)-(a.date||0)}).slice(0,4);
+    var b=$("#bubble");
+    b.innerHTML="<h4>"+META[sid].name+"<span>"+(n?n+" 条未读":"")+"</span></h4><div class=\"msg\">"+
+      msgs.map(function(x){return "<div><b>"+esc(x.title||"")+"</b> "+esc(x.text||"")+"</div>"}).join("")+
+      "</div><div class=\"hint\">点图标打开详细窗口 · 看完即消失</div>";
+    b.classList.add("show");
+  }
+  function hideBubble(){$("#bubble").classList.remove("show")}
+
+  function openDetail(){
+    if(window.desktop&&window.desktop.openDetail)window.desktop.openDetail();
+    else location.href="index.html?hub="+encodeURIComponent(S.hub)+"&token="+encodeURIComponent(S.token);
+  }
+
+  function pull(){
+    var before=bySid().unread;
+    api("/api/state?since="+(S.state.rev||0)).then(function(d){
+      if(!d.unchanged)S.state=d;
+      if(S.firstPull){S.firstPull=false}
+      else{
+        var after=bySid().unread,up=[];
+        ORDER.forEach(function(s){if((after[s]||0)>(before[s]||0))up.push(s)});
+        if(up.length)flash(up);
+      }
+      render();
+    }).catch(function(){});
+  }
+
+  function openStream(){
+    if(S.es)S.es.close();
+    try{
+      var es=new EventSource(S.hub+"/api/stream?token="+encodeURIComponent(S.token));
+      S.es=es;
+      es.addEventListener("state",function(){pull()});
+      es.addEventListener("hello",function(){setStatus("online")});
+      es.onerror=function(){setStatus("reconnecting")};
+    }catch(e){setInterval(pull,4000)}
+  }
+
+  function connect(){
+    if(!S.hub||!S.token){setStatus("off");return}
+    setStatus("connecting");
+    fetch(S.hub+"/api/ping",{signal:AbortSignal.timeout(8000)}).then(function(r){return r.json()})
+      .then(function(p){if(!p.ok)throw new Error("Hub 无响应");return pull()})
+      .then(function(){openStream();setStatus("online")})
+      .catch(function(e){setStatus("error");console.log("hub connect fail",String(e&&e.message||e))});
+  }
+
+  /* 系统监控：主进程推送 */
+  function applySys(d){
+    if(!d)return;
+    var cpu=$("#cpu");cpu.textContent=(d.cpu!=null?d.cpu+"%":"--");
+    cpu.className=(d.cpu!=null&&d.cpu>=70)?"hi":"";
+    $("#down").textContent=d.down||"--";
+    $("#up").textContent=d.up||"--";
+  }
+  if(window.desktop&&window.desktop.onSysInfo)window.desktop.onSysInfo(applySys);
+
+  /* 设置面板 */
+  function showSetup(){
+    $("#hub").value=S.hub;$("#token").value=S.token;$("#err").textContent="";
+    $("#apps").style.display="none";$(".gear").style.display="none";$(".sys").style.display="none";
+    $("#setup").classList.add("show");hideBubble();
+    if(window.desktop&&window.desktop.resizeRail)window.desktop.resizeRail(-1); // -1 = 设置宽度
+  }
+  function hideSetup(){
+    $("#setup").classList.remove("show");
+    $("#apps").style.display="flex";$(".gear").style.display="block";$(".sys").style.display="flex";
+    render();
+  }
+  $("#gear").addEventListener("click",showSetup);
+  $("#back").addEventListener("click",hideSetup);
+  $("#save").addEventListener("click",function(){
+    var hub=$("#hub").value.trim().replace(/\/+$/,""),token=$("#token").value.trim();
+    if(!/^https?:\/\//i.test(hub)){$("#err").textContent="地址要以 http:// 或 https:// 开头";return}
+    if(!token){$("#err").textContent="口令还没填";return}
+    S.hub=hub;S.token=token;saveCfg();hideSetup();S.firstPull=true;connect();
+  });
+  window.addEventListener("error",function(e){console.log("rail error",e.message)});
+
+  loadCfg();render();resizeTo(0);
+  if(window.desktop&&window.desktop.onConfig){
+    window.desktop.onConfig(function(c){applyCfg(c);if(S.hub&&S.token){S.firstPull=true;connect()}});
+  }
+  if(S.hub&&S.token)setTimeout(connect,120);
+})();
+</script>
+</body>
+</html>

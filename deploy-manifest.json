@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "manifest_version": "1.0",
+  "project": {
+    "name": "tg-hub",
+    "display_name": "三平台多端同步消息悬浮窗",
+    "description": "Telegram / SafeXTM / LINE 三平台经中心 Hub 单点采集，桌面悬浮窗与手机 PWA 多端看同一份消息、标已读、回复并跨端同步。",
+    "language": "zh-CN",
+    "homepage_doc": "HUB-README.md",
+    "ai_entry_doc": "AGENTS.md"
+  },
+  "requirements": {
+    "node": ">=18",
+    "node_recommended": "20 LTS",
+    "npm": "any",
+    "optional": [
+      "cloudflared 或 frp/ngrok（手机/远端访问且无公网 IP 时需要）",
+      "Android + MacroDroid（仅 LINE 玩法 B 需要）"
+    ]
+  },
+  "architecture": {
+    "type": "central-hub-multi-client",
+    "why": "SafeXTM getUpdates 是破坏性消费、LINE 只有 webhook 无拉取接口，多端必须经单点 Hub 采集与持有权威状态。",
+    "data_flow": "平台 -> Hub(server.js + store.js) -> REST/SSE -> [桌面 Electron | 手机 PWA | 浏览器]",
+    "single_point_of_failure": "hub/（建议 systemd 或 pm2 守护）",
+    "persistent_state_file": "hub/state.json（禁止删除）"
+  },
+  "components": [
+    {
+      "id": "hub",
+      "path": "hub/",
+      "role": "中心服务，必须先启动",
+      "runtime": "node",
+      "entry": "hub/server.js",
+      "cwd": "hub/",
+      "install": "cd hub && npm install",
+      "start": "cd hub && node server.js",
+      "port": 8787,
+      "bind": "0.0.0.0",
+      "config_file": "hub/config.json",
+      "config_template": "hub/config.example.json",
+      "deps": ["telegram"],
+      "verify": "curl http://127.0.0.1:8787/api/ping",
+      "verify_expect": "返回含 ok:true 的 JSON，且 HTTP 200"
+    },
+    {
+      "id": "client-desktop",
+      "path": "client-desktop/",
+      "role": "桌面 HUD：平时只显示 CPU/网速，来通知才显示对应应用图标",
+      "runtime": "electron",
+      "entry": "client-desktop/main.js",
+      "cwd": "client-desktop/",
+      "install": "cd client-desktop && npm install",
+      "start": "cd client-desktop && npm start",
+      "deps": ["electron ^33.4.11"],
+      "sysmon": "client-desktop/sysmon.js（每 1.5s 采样 CPU/网速经 IPC 推送；Linux 真实网速，mac/win 显示 --）",
+      "ui_rail": "client/rail.html（默认极小横条：CPU/网速常驻，仅显示有未读的应用图标 + 角标 + 闪光）",
+      "ui_detail": "client/index.html（点图标打开，左右分栏详细视图）",
+      "config": "齿轮填 hub 地址 + hubToken，存本地 userData/hub-client.json",
+      "verify": "空闲时右边缘极小横条只显示 CPU/网速无图标；注入消息后只出现对应应用图标+角标+闪光；已读后图标消失",
+      "mirror_env": "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/",
+      "settings_window": {
+        "desc": "独立桌面设置窗：与 HUD 同一程序、共用本地配置，双击单独启动",
+        "launcher_win": "settings-win.bat",
+        "launcher_mac_linux": "settings-mac.command",
+        "start": "cd client-desktop && npm start -- --settings",
+        "ui": "client-desktop/settings.html（连接/TG/SX/LINE/维护 五个分区）",
+        "ipc": "settings:get-config / settings:save-config / settings:api（主进程 http 代理 Hub，绕开 file:// 跨域）",
+        "abilities": "集中配置 hubToken、三平台凭证与代理、驱动 Telegram 登录状态机、查看来源状态、重启采集器",
+        "verify": "双击启动脚本打开设置中心；填 Hub 地址+口令后显示已连接并回填各平台凭证；保存后 GET /api/config/full 值更新；HUD 不受影响"
+      }
+    },
+    {
+      "id": "client-pwa",
+      "path": "client/",
+      "role": "手机/浏览器共享 UI（与桌面同一份代码）",
+      "runtime": "static",
+      "entry": "client/index.html",
+      "host": "任意静态服务器或 Nginx",
+      "url_template": "https://静态域名/index.html?hub={HUB_URL}&token={HUB_TOKEN}",
+      "config": "URL 参数 hub/token 存 localStorage，之后免填",
+      "verify": "出现与桌面相同的会话列表；一端已读后另一端未读角标消失",
+      "install_pwa": "Android Chrome 安装应用 / iOS Safari 添加到主屏幕"
+    }
+  ],
+  "start_order": ["hub", "client-desktop | client-pwa"],
+  "ports": [
+    { "port": 8787, "proto": "http", "component": "hub", "tls_recommended": true }
+  ],
+  "config_fields": {
+    "hubToken": { "type": "string", "required": true, "desc": "各端连接 Hub 的口令", "generate": "node -e \"console.log(require('crypto').randomBytes(24).toString('hex'))\"" },
+    "telegram.apiId": { "type": "number", "required_for": "telegram", "source": "https://my.telegram.org/apps" },
+    "telegram.apiHash": { "type": "string", "required_for": "telegram", "source": "https://my.telegram.org/apps" },
+    "telegram.session": { "type": "string", "default": "", "desc": "留空，首次登录后自动写入" },
+    "telegram.proxy": { "type": "object", "default": "disabled", "desc": "国内网络需 SOCKS5" },
+    "safextm.token": { "type": "string", "required_for": "safextm", "source": "SafeXTM @BotFather /newbot" },
+    "line.token": { "type": "string", "required_for": "line-mode-a", "desc": "Channel access token" },
+    "line.secret": { "type": "string", "required_for": "line-mode-a", "desc": "Channel secret" },
+    "line.relayToken": { "type": "string", "required_for": "line-mode-b", "desc": "手机转发口令，自定" }
+  },
+  "api": [
+    { "path": "/api/ping", "method": "GET", "auth": false, "desc": "健康检查" },
+    { "path": "/api/state", "method": "GET", "auth": true, "params": "since=<rev>", "desc": "全量状态，rev 未变返回 unchanged" },
+    { "path": "/api/stream", "method": "GET", "auth": true, "desc": "SSE 实时推送" },
+    { "path": "/api/read", "method": "POST", "auth": true, "body": "{sid,key}", "desc": "标已读并回写平台+广播" },
+    { "path": "/api/reply", "method": "POST", "auth": true, "body": "{sid,key,text}", "desc": "回复并回写平台+广播" },
+    { "path": "/api/totals", "method": "GET", "auth": true, "desc": "未读统计" },
+    { "path": "/api/tg/auth", "method": "GET", "auth": true, "desc": "Telegram 登录当前步骤" },
+    { "path": "/api/tg/submit", "method": "POST", "auth": true, "body": "{value}", "desc": "提交手机号/验证码/密码" },
+    { "path": "/api/config", "method": "GET,POST", "auth": true, "desc": "读(脱敏)/更新凭证并重启采集器" },
+    { "path": "/api/config/full", "method": "GET", "auth": true, "desc": "读完整配置(含明文凭证)，仅供本地桌面设置窗回填表单，生产公网应限制到本机" },
+    { "path": "/hook/line", "method": "POST", "auth": false, "desc": "LINE 官方 webhook（验签）" },
+    { "path": "/hook/line/notify", "method": "POST", "auth": false, "desc": "手机转发（relayToken 校验）" }
+  ],
+  "auth_header": "X-Hub-Token: <hubToken>",
+  "sid_values": ["telegram", "safextm", "line"],
+  "login_flow": {
+    "trigger": "填了 telegram.apiId/apiHash 后",
+    "steps": [
+      "GET /api/tg/auth 查看 step",
+      "POST /api/tg/submit {value:手机号} -> 验证码",
+      "POST /api/tg/submit {value:验证码} ->（如有）密码",
+      "POST /api/tg/submit {value:密码} -> ready，session 自动写入 config.json"
+    ],
+    "verify": "/api/tg/auth 返回 step=ready"
+  },
+  "verification_plan": [
+    { "id": "hub_up", "cmd": "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/ping", "expect": "200" },
+    { "id": "state_read", "cmd": "curl -H 'X-Hub-Token: TOKEN' http://127.0.0.1:8787/api/state", "expect": "JSON 含 chats 字段" },
+    { "id": "inject_test_message", "cmd": "curl -X POST 'http://127.0.0.1:8787/hook/line/notify?token=RELAYTOKEN' -H 'Content-Type: application/json' -d '{\"user\":\"测试\",\"text\":\"hello\"}'", "expect": "HTTP 200" },
+    { "id": "cross_client_sync", "desc": "一端 POST /api/read，另一端 /api/state 的对应会话 unread 变 0" },
+    { "id": "settings_window", "cmd": "双击 settings-win.bat / settings-mac.command", "expect": "打开设置中心；填 Hub 地址+口令后显示已连接、回填凭证；保存后 GET /api/config/full 更新" }
+  ],
+  "known_limits": [
+    "Hub 是单点，挂掉则所有端收不到新消息（历史仍在 state.json）",
+    "SafeXTM/LINE 只能收发给机器人/官方账号的消息，收不到个人账号全部会话",
+    "LINE 玩法 B 仅 Android，不能回复",
+    "iOS 无法做系统级悬浮窗，仅 PWA",
+    "LINE push 回复计入平台免费额度（各地区不同）",
+    "沙箱环境 Telegram 官网不可达，GramJS 真机登录未实测（逻辑移植自已验证单端版）"
+  ],
+  "do_not_touch": [
+    "electron/",
+    "index.html",
+    "login.html",
+    "line-setup.html",
+    "start-mac.command",
+    "start-win.bat"
+  ],
+  "docs": {
+    "ai_entry": "AGENTS.md",
+    "human_deploy": "HUB-README.md",
+    "settings_window": "client-desktop/settings.html + settings-win.bat/settings-mac.command（独立桌面设置窗，见 client-desktop 组件 settings_window 字段）",
+    "line_api_reference": "LINE-API-REFERENCE.md",
+    "telegram_features": "FEATURES.md",
+    "design_notes": "TDLIB-NOTES.md"
+  }
+}

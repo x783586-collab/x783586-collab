@@ -1,0 +1,13 @@
+{
+  "name": "tg-hub-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "tg-hub 桌面悬浮窗（Electron 壳，加载共享 client UI）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.4.11"
+  }
+}

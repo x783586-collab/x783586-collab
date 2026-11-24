@@ -1,0 +1,1728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Telegram HUD</title>
+<style>
+:root{
+  --fg:#e9e9ee;
+  --muted:#8b8b96;
+  --faint:#5c5c66;
+  --line:rgba(255,255,255,.075);
+  --line-2:rgba(255,255,255,.13);
+  --green:#4ade80;
+  --yellow:#fbbf24;
+  --red:#f87171;
+  --tg:#2aabee;
+  --panel:rgba(17,17,21,.74);
+  --panel-2:rgba(20,20,25,.965);
+  --rail-w:74px;
+  --panel-w:318px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  background:#08080a;color:var(--fg);overflow:hidden;
+  -webkit-font-smoothing:antialiased;user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+body.transparent{background:transparent}
+body.transparent .desk{display:none}
+/* 透明窗口里 backdrop-filter 会采样不到桌面内容，产生灰雾，改用纯半透明 */
+body.transparent .rail,
+body.transparent .panel,
+body.transparent .card{
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  background:rgba(17,17,21,.86);
+}
+.desk{
+  position:fixed;inset:0;
+  background:
+    radial-gradient(900px 620px at 16% 10%,#1b2a39 0%,transparent 62%),
+    radial-gradient(820px 700px at 84% 80%,#2a1f36 0%,transparent 58%),
+    radial-gradient(700px 520px at 52% 46%,#141f28 0%,transparent 60%),
+    linear-gradient(160deg,#0b0d10 0%,#08080a 48%,#0d0b10 100%);
+}
+.desk::after{
+  content:"";position:absolute;inset:0;opacity:.5;
+  background-image:radial-gradient(rgba(255,255,255,.045) .5px,transparent .5px);
+  background-size:3px 3px;
+}
+
+/* ---------- shell ---------- */
+.hud{
+  position:fixed;top:50%;right:12px;transform:translateY(-50%);
+  display:flex;align-items:center;justify-content:flex-end;
+  z-index:40;
+  transition:opacity .35s ease;
+}
+body.dim .hud{opacity:.62}
+body.dim .hud:hover{opacity:1}
+body.attn .hud{opacity:1}
+
+.rail{
+  width:var(--rail-w);
+  padding:9px 0 8px;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:22px;
+  box-shadow:0 24px 60px -18px rgba(0,0,0,.85),0 2px 10px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter:blur(22px) saturate(1.5);
+  -webkit-backdrop-filter:blur(22px) saturate(1.5);
+  transition:border-radius .28s cubic-bezier(.2,.9,.3,1),transform .28s cubic-bezier(.2,.9,.3,1),opacity .25s;
+  transform-origin:right center;
+}
+.hud[data-mode="panel"] .rail{
+  transform:scale(.96);opacity:0;pointer-events:none;position:absolute;right:0;
+}
+
+/* 连接状态点 */
+.dot{
+  width:6px;height:6px;border-radius:50%;background:var(--faint);
+  margin-bottom:1px;transition:background .3s,box-shadow .3s;flex:0 0 auto;
+}
+.hud[data-state="online"] .dot{background:var(--green);box-shadow:0 0 8px rgba(74,222,128,.7)}
+.hud[data-state="connecting"] .dot{background:var(--yellow);animation:blink 1.1s ease-in-out infinite}
+.hud[data-state="offline"] .dot{background:var(--red);box-shadow:0 0 8px rgba(248,113,113,.55)}
+/* 免打扰时状态点变橙并变成月牙形 */
+body.dnd .dot{
+  background:#f59e0b;box-shadow:0 0 8px rgba(245,158,11,.6);
+  border-radius:50% 50% 50% 2px;transform:rotate(-42deg);
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+.chats{display:flex;flex-direction:column;align-items:center;gap:7px;width:100%;
+  max-height:442px;overflow-y:auto;scrollbar-width:none}
+.chats::-webkit-scrollbar{display:none}
+
+/* 头像 */
+.chat{
+  position:relative;width:46px;height:46px;cursor:pointer;
+  display:grid;place-items:center;
+}
+.chat .ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:1.5px solid transparent;transition:border-color .2s,transform .2s;
+}
+.chat:hover .ring{border-color:rgba(255,255,255,.18)}
+.chat.unread .ring{border-color:rgba(255,255,255,.09)}
+.chat.pulse .ring{
+  animation:pulse-ring 1.4s ease-out 2;
+  border-color:var(--pulse-c,#2aabee);
+}
+@keyframes pulse-ring{
+  0%{transform:scale(1);box-shadow:0 0 0 0 color-mix(in srgb, var(--pulse-c,#2aabee) 50%, transparent)}
+  100%{transform:scale(1);box-shadow:0 0 0 9px color-mix(in srgb, var(--pulse-c,#2aabee) 0%, transparent)}
+}
+
+/* 来源色点：只有一个来源时不显示，避免多余装饰 */
+.chat .src{
+  position:absolute;left:2px;bottom:4px;width:7px;height:7px;border-radius:50%;
+  box-shadow:0 0 0 1.5px rgba(15,15,19,.95);
+  pointer-events:none;
+}
+
+.av{
+  width:38px;height:38px;border-radius:50%;overflow:hidden;
+  display:grid;place-items:center;
+  font-size:14px;font-weight:600;color:#fff;letter-spacing:-.02em;
+  background:#3a3a44;transition:filter .2s,transform .2s;
+}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+.chat.muted .av{filter:saturate(.35) brightness(.62)}
+.chat:hover .av{transform:scale(1.06)}
+.chat.muted:hover .av{filter:saturate(.8) brightness(.9)}
+
+.badge{
+  position:absolute;top:-1px;right:-2px;
+  min-width:16px;height:16px;padding:0 4px;border-radius:8px;
+  background:#ef4444;color:#fff;font-size:9.5px;font-weight:700;
+  display:none;place-items:center;line-height:1;
+  box-shadow:0 0 0 2px rgba(17,17,21,.9);
+}
+.chat.unread .badge{display:grid}
+.chat.muted .badge{background:#4b5563}
+
+.toggle{
+  width:26px;height:26px;border-radius:8px;border:0;background:transparent;
+  color:var(--faint);font-size:13px;cursor:pointer;padding:0;
+  display:grid;place-items:center;transition:.16s;margin-top:2px;
+}
+.toggle:hover{color:var(--fg);background:rgba(255,255,255,.07)}
+.toggle{color:#7a7a85}
+
+.empty-rail{
+  writing-mode:vertical-rl;font-size:10px;color:#7a7a85;
+  letter-spacing:.12em;padding:8px 0;line-height:1.6;text-align:center;
+}
+
+.loginbtn{
+  width:48px;height:24px;border-radius:8px;
+  border:1px solid rgba(42,171,238,.45);background:rgba(42,171,238,.15);
+  color:#9ddcf7;font-size:10.5px;font-weight:600;cursor:pointer;
+  font-family:inherit;padding:0;transition:.15s;
+}
+.loginbtn:hover{background:rgba(42,171,238,.28);color:#c9ecfc}
+
+/* ---------- panel ---------- */
+.panel{
+  width:var(--panel-w);
+  max-height:min(72vh,540px);
+  display:none;flex-direction:column;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:20px;
+  box-shadow:0 28px 70px -20px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter:blur(24px) saturate(1.5);
+  -webkit-backdrop-filter:blur(24px) saturate(1.5);
+  overflow:hidden;
+}
+.hud[data-mode="panel"] .panel{display:flex;animation:slidein .22s cubic-bezier(.2,.9,.3,1)}
+@keyframes slidein{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+
+.phead{
+  display:flex;align-items:center;gap:7px;
+  padding:11px 12px 9px;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.ptitle{font-size:12.5px;font-weight:650;letter-spacing:-.01em}
+.pstat{font-size:10px;color:var(--faint);margin-top:1px}
+.pclose{
+  margin-left:auto;width:22px;height:22px;border-radius:6px;border:0;
+  background:transparent;color:var(--faint);cursor:pointer;font-size:13px;
+  display:grid;place-items:center;padding:0;transition:.15s;
+}
+.pclose:hover{color:var(--fg);background:rgba(255,255,255,.08)}
+
+.srcbar{display:none;gap:3px;padding:7px 6px 3px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.srcbar::-webkit-scrollbar{display:none;width:0;height:0}
+.srcbar.on{display:flex}
+.srcbar button{
+  border:1px solid rgba(255,255,255,.08);background:transparent;
+  color:#8b8b96;font-size:9px;padding:2px 6px;border-radius:20px;
+  cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:3px;
+  transition:.15s;flex:none;
+}
+.srcbar button:hover{color:#d8d8e0;border-color:rgba(255,255,255,.18)}
+.srcbar button.on{background:rgba(255,255,255,.1);color:#f2f2f6;border-color:rgba(255,255,255,.18)}
+.srcbar i{width:5px;height:5px;border-radius:50%;display:block;flex:none}
+.srcbar b{font-weight:600;opacity:.7;font-size:9px}
+.plist{overflow-y:auto;padding:4px;flex:1;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.12) transparent}
+.plist::-webkit-scrollbar{width:4px}
+.plist::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+
+.row{
+  display:flex;align-items:center;gap:9px;
+  padding:7px 8px;border-radius:10px;cursor:pointer;
+  transition:background .14s;
+}
+.row:hover{background:rgba(255,255,255,.06)}
+.row .av{width:32px;height:32px;font-size:12px;flex:0 0 auto}
+.meta{flex:1;min-width:0}
+.name{
+  font-size:11.5px;font-weight:600;line-height:1.3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.name svg.pin{color:#4f4f59;margin-left:3px;vertical-align:-0.5px;flex:none}
+.prev{
+  font-size:10.5px;color:var(--muted);line-height:1.35;margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.row.unread .prev{color:#c8c8d0}
+.right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:0 0 auto}
+.time{font-size:9px;color:#4f4f59}
+.row .badge{position:static;display:none;box-shadow:none}
+.row.unread .badge{display:grid}
+.row.muted .av{filter:saturate(.35) brightness(.62)}
+.row.muted .name{color:#9a9aa4}
+.row.pulse{animation:rowflash 1.2s ease-out 1}
+@keyframes rowflash{0%{background:rgba(42,171,238,.18)}100%{background:transparent}}
+
+.pfoot{
+  padding:8px 12px;border-top:1px solid rgba(255,255,255,.05);
+  font-size:9.5px;color:#4f4f59;display:flex;align-items:center;gap:6px;
+}
+
+/* ---------- hover card ---------- */
+.card{
+  position:fixed;z-index:60;width:246px;
+  padding:11px 12px;
+  background:var(--panel-2);
+  border:1px solid var(--line-2);border-radius:14px;
+  box-shadow:0 26px 60px -14px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
+  opacity:0;pointer-events:none;transform:scale(.96);
+  transition:opacity .15s,transform .15s;
+  transform-origin:right top;
+}
+.card.show{opacity:1;pointer-events:auto;transform:scale(1)}
+
+.c-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.c-head .av{width:30px;height:30px;font-size:11px;flex:0 0 auto}
+.c-title{font-size:12px;font-weight:650;line-height:1.25}
+.c-sub{font-size:9.5px;color:var(--faint);margin-top:1px}
+.c-src{
+  display:flex;align-items:center;gap:5px;
+  font-size:9px;color:#6e6e79;margin:-3px 0 8px;
+  padding-left:1px;letter-spacing:.01em;
+}
+.c-src i{width:5px;height:5px;border-radius:50%;display:block;flex:none}
+
+.c-msgs{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.msg{display:flex;gap:6px;font-size:10.5px;line-height:1.45;color:var(--muted)}
+.msg .who{flex:0 0 auto;color:#6f6f7a;font-weight:600}
+.msg.out .who{color:#5a7d8a}
+.msg .txt{
+  color:#c2c2cb;word-break:break-word;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.msg.out .txt{color:#8f8f9a}
+
+.c-btn{
+  width:100%;height:27px;border-radius:8px;border:1px solid var(--line-2);
+  background:rgba(42,171,238,.14);color:#9ddcf7;
+  font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:.15s;
+}
+.c-btn:hover{background:rgba(42,171,238,.22);color:#bae6fd}
+
+/* 关键词命中的会话 */
+.chat.hot .ring{border-color:rgba(248,113,113,.55)}
+.chat.hot .av{box-shadow:0 0 10px rgba(248,113,113,.35)}
+.row.hot{background:rgba(248,113,113,.07)}
+.row.hot .prev{color:#fca5a5}
+
+/* 卡片里的快速回复区 */
+.c-tools{display:flex;gap:5px;margin-bottom:8px}
+.c-tool{
+  flex:1;height:24px;border-radius:7px;border:1px solid var(--line);
+  background:rgba(255,255,255,.045);color:var(--muted);
+  font-size:10px;font-family:inherit;cursor:pointer;padding:0;
+  display:grid;place-items:center;transition:.14s;
+}
+.c-tool:hover{background:rgba(255,255,255,.1);color:var(--fg)}
+.c-tool.react{font-size:12px}
+.c-tool svg{display:block}
+.c-chips{display:flex;gap:4px;margin-bottom:7px;flex-wrap:wrap}
+.chip{
+  height:21px;padding:0 8px;border-radius:11px;border:1px solid var(--line);
+  background:rgba(255,255,255,.045);color:var(--muted);
+  font-size:10px;font-family:inherit;cursor:pointer;transition:.14s;
+}
+.chip:hover{background:rgba(42,171,238,.16);color:#9ddcf7;border-color:rgba(42,171,238,.3)}
+.c-reply{display:flex;gap:6px}
+.c-reply input{
+  flex:1;height:28px;border-radius:8px;border:1px solid var(--line);
+  background:rgba(255,255,255,.05);color:var(--fg);font-size:11px;
+  padding:0 9px;font-family:inherit;outline:none;transition:.15s;
+}
+.c-reply input:focus{border-color:rgba(42,171,238,.5)}
+.c-reply button{
+  width:44px;height:28px;border-radius:8px;border:0;
+  background:var(--tg);color:#04121a;font-size:10.5px;font-weight:700;
+  cursor:pointer;font-family:inherit;transition:.15s;padding:0;
+}
+.c-reply button:hover{background:#4dbdf5}
+.c-tip{font-size:9px;color:#55555e;margin-top:6px;text-align:center}
+
+/* ---------- auth sheet ---------- */
+.veil{
+  position:fixed;inset:0;z-index:100;background:rgba(6,6,8,.6);
+  backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:16px;
+}
+.veil.show{display:flex}
+.sheet{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;
+
+  width:min(330px,100%);max-height:88vh;overflow:auto;
+  background:#141419;border:1px solid var(--line-2);border-radius:18px;
+  box-shadow:0 40px 90px -20px rgba(0,0,0,.9);padding:15px 16px;
+  animation:pop .2s cubic-bezier(.2,.9,.3,1);
+}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.sheet h3{margin:0 0 5px;font-size:13.5px;font-weight:650}
+.sheet p{font-size:10.5px;color:var(--muted);line-height:1.5;margin:0 0 10px}
+.fld{margin-bottom:10px}
+.fld label{display:block;font-size:10px;color:var(--faint);margin-bottom:5px}
+.fld input{
+  width:100%;height:33px;border-radius:8px;border:1px solid var(--line);
+  background:rgba(255,255,255,.045);color:var(--fg);font-size:12px;
+  padding:0 9px;font-family:inherit;outline:none;transition:.15s;
+}
+.fld input:focus{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.07)}
+.btn{
+  height:33px;border-radius:9px;border:1px solid var(--line);
+  background:rgba(255,255,255,.06);color:var(--fg);font-size:12px;
+  font-weight:550;cursor:pointer;padding:0 14px;font-family:inherit;
+  transition:.15s;width:100%;
+}
+.btn:hover{background:rgba(255,255,255,.12)}
+.btn.primary{background:var(--tg);color:#04121a;border-color:var(--tg);font-weight:650}
+.btn.primary:hover{background:#4dbdf5}
+.sheet .err{color:#fca5a5;font-size:10.5px;margin-top:8px;display:none}
+.btn.tiny{width:auto;height:24px;padding:0 9px;font-size:10px;border-radius:7px}
+.hint{font-size:9.5px;color:#55555e;line-height:1.5;margin-top:10px}
+
+/* ---------- 消息来源 ---------- */
+.srcname{display:flex;align-items:center;gap:7px}
+.srcname i{width:6px;height:6px;border-radius:50%;display:block;flex:none}
+.sn-t{display:flex;flex-direction:column;line-height:1.35}
+.sn-t small{font-size:9px;color:#55555e;margin-top:1px}
+.srcacts{display:flex;align-items:center;gap:7px;flex:none}
+.flabel{display:block;font-size:9.5px;color:#6a6a75;margin:9px 0 0}
+.flabel small{color:#4a4a54;margin-left:5px;font-size:9px}
+.tinput.ta{height:auto;min-height:92px;padding:7px 9px;line-height:1.6;resize:vertical;font-family:inherit}
+.accbox{
+  border:1px solid rgba(255,255,255,.07);border-radius:9px;
+  padding:8px 9px 10px;margin-bottom:8px;background:rgba(255,255,255,.02);
+}
+.accbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+.accbar b{font-size:10.5px;color:#9a9aa5;font-weight:600}
+.accgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+.accgrid .fld{min-width:0}
+.accgrid .fld:last-child{grid-column:1 / -1}
+
+.toast{
+  position:fixed;left:50%;top:22px;transform:translate(-50%,-8px);
+  background:rgba(28,28,34,.96);border:1px solid var(--line-2);
+  color:var(--fg);font-size:11px;padding:7px 13px;border-radius:9px;
+  opacity:0;pointer-events:none;transition:.22s;z-index:200;white-space:nowrap;
+  box-shadow:0 14px 40px -8px rgba(0,0,0,.8);
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- 设置面板 ---------- */
+.set-grid{margin-bottom:9px}
+.set-grid h4{
+  margin:0 0 5px;font-size:9.5px;color:var(--faint);font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;
+  display:flex;align-items:center;gap:6px;
+}
+.set-grid h4::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.06)}
+.srow{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:4px 0;font-size:11.5px;color:#c9c9d2;
+}
+.srow small{display:block;font-size:9.5px;color:var(--faint);margin-top:2px;line-height:1.4}
+.sw{
+  position:relative;width:34px;height:19px;border-radius:10px;flex:0 0 auto;
+  background:rgba(255,255,255,.1);border:1px solid var(--line-2);
+  cursor:pointer;transition:.18s;
+}
+.sw::after{
+  content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+  background:#8a8a94;transition:.18s;
+}
+.sw.on{background:rgba(42,171,238,.35);border-color:rgba(42,171,238,.5)}
+.sw.on::after{left:17px;background:#7dd3fc}
+.tinput{
+  height:28px;border-radius:7px;border:1px solid var(--line);
+  background:rgba(255,255,255,.05);color:var(--fg);font-size:11px;
+  padding:0 8px;font-family:inherit;outline:none;width:104px;
+}
+.tinput:focus{border-color:rgba(255,255,255,.3)}
+.tinput.wide{width:100%}
+.seg{display:flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:0 0 auto}
+.seg button{
+  height:26px;padding:0 10px;border:0;background:transparent;color:var(--muted);
+  font-size:10.5px;font-family:inherit;cursor:pointer;transition:.14s;
+}
+.seg button.on{background:rgba(42,171,255,.18);color:#9ddcf7;font-weight:600}
+.watch-list{max-height:136px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:3px;margin:6px 0 2px;scrollbar-width:thin}
+.witem{
+  display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;
+  cursor:pointer;transition:.12s;
+}
+.witem:hover{background:rgba(255,255,255,.05)}
+.witem .av{width:24px;height:24px;font-size:10px;flex:0 0 auto}
+.witem .nm{flex:1;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c2c2cb}
+.witem .cb{
+  width:15px;height:15px;border-radius:5px;border:1.5px solid rgba(255,255,255,.2);
+  flex:0 0 auto;display:grid;place-items:center;font-size:10px;color:transparent;transition:.14s;
+}
+.witem.sel .cb{background:var(--tg);border-color:var(--tg);color:#04121a;font-weight:800}
+.sbtn-row{display:flex;gap:8px;margin-top:4px}
+.sbtn-row .btn{flex:1}
+.range-row{display:flex;align-items:center;gap:10px;flex:1}
+.range-row input[type=range]{flex:1;accent-color:#2aabee;height:3px}
+.range-row b{font-size:10px;color:var(--muted);width:34px;text-align:right;font-weight:600}
+.hintlist{font-size:10px;color:#5c5c66;line-height:1.7;margin:4px 0 0;padding:0;list-style:none}
+.hintlist code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:9.5px}
+</style>
+</head>
+<body>
+
+<div class="desk"></div>
+
+<div class="hud" id="hud" data-mode="rail" data-state="offline">
+  <div class="rail" id="rail">
+    <div class="dot" id="dot" title="连接状态"></div>
+    <div class="chats" id="chats"></div>
+    <button class="toggle" id="btnSettings" title="设置"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 8.4a3.6 3.6 0 100 7.2 3.6 3.6 0 000-7.2zm8.2 3.6c0 .5-.05.98-.13 1.45l2.03 1.55-1.94 3.36-2.4-.97a7.6 7.6 0 01-2.5 1.45l-.37 2.55h-3.88l-.37-2.55a7.6 7.6 0 01-2.5-1.45l-2.4.97-1.94-3.36 2.03-1.55a8.7 8.7 0 010-2.9L3.4 8.99 5.34 5.63l2.4.97a7.6 7.6 0 012.5-1.45l.37-2.55h3.88l.37 2.55c.92.32 1.77.82 2.5 1.45l2.4-.97 1.94 3.36-2.03 1.55c.08.47.13.95.13 1.46z"/></svg></button>
+    <button class="toggle" id="toggle" title="展开列表">‹</button>
+  </div>
+  <div class="panel" id="panel">
+    <div class="phead">
+      <div>
+        <div class="ptitle" id="ptitle">全部消息</div>
+        <div class="pstat" id="pstat">未连接</div>
+      </div>
+      <button class="pclose" id="pclose" title="收起">›</button>
+    </div>
+    <div class="srcbar" id="srcbar"></div>
+    <div class="plist" id="plist"></div>
+    <div class="pfoot" id="pfoot"></div>
+  </div>
+</div>
+
+<div class="card" id="card"></div>
+<div class="veil" id="veil"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ==========================================================
+   数据层：优先用 Electron 主进程提供的数据（window.tgApi），
+   在普通浏览器里则用 mock 数据方便预览。
+   ========================================================== */
+
+const isEmbed = new URLSearchParams(location.search).get("embed") === "1";
+const hasBridge = !!window.tgApi;
+
+/* ---------- mock（浏览器预览用） ---------- */
+const MOCK_CHATS = [
+  { id:"101", title:"Alex Chen", unread:3, muted:false, last:{ text:"那版设计我看过了，明早一起过一下？", date:Date.now()-4*60000, out:false },
+    messages:[ {who:"Alex", text:"那版设计我看过了", out:false}, {who:"Me", text:"有问题吗？", out:true}, {who:"Alex", text:"明早一起过一下？", out:false} ] },
+  { id:"102", title:"前端组", unread:12, muted:false, last:{ text:"构建又挂了，谁在改 CI", date:Date.now()-22*60000, out:false },
+    messages:[ {who:"王一", text:"构建又挂了", out:false}, {who:"李二", text:"谁在改 CI", out:false}, {who:"Me", text:"我看下", out:true} ] },
+  { id:"103", title:"妈妈", unread:1, muted:false, last:{ text:"记得吃饭", date:Date.now()-49*60000, out:false },
+    messages:[ {who:"妈妈", text:"今天降温了", out:false}, {who:"妈妈", text:"记得吃饭", out:false} ] },
+  { id:"104", title:"设计参考", unread:0, muted:true, pinned:true, last:{ text:"[图片]", date:Date.now()-3*3600000, out:false },
+    messages:[ {who:"K", text:"这个配色不错", out:false}, {who:"K", text:"[图片]", out:false} ] },
+  { id:"105", title:"小林", unread:0, muted:false, last:{ text:"收到，谢谢！", date:Date.now()-5*3600000, out:false },
+    messages:[ {who:"Me", text:"文件发你了", out:true}, {who:"小林", text:"收到，谢谢！", out:false} ] }
+];
+
+/* 预览用的多来源数据：真实运行时这里换成各适配器的输出 */
+const MOCK_FEEDS = [
+  { sid:"imap", key:"hi@peterguo.me", title:"工作邮箱", subtitle:"hi@peterguo.me", color:"#f59e0b", sourceName:"邮件",
+    text:"本周产品评审材料已更新，请提前过一遍", date:Date.now()-9*60000, unread:2, canReply:false,
+    messages:[{who:"周会", text:"本周产品评审材料已更新", out:false, date:Date.now()-9*60000}] },
+  { sid:"github", key:"vercel/next.js", title:"vercel/next.js", subtitle:"GitHub · 请求你审阅", color:"#a371f7", sourceName:"GitHub",
+    text:"fix: streaming hydration mismatch in app router", date:Date.now()-13*60000, unread:1, canReply:false,
+    messages:[{who:"PullRequest", text:"fix: streaming hydration mismatch", out:false, date:Date.now()-13*60000}] },
+  { sid:"rss", key:"https://sspai.com/feed", title:"少数派", subtitle:"sspai.com", color:"#22c55e", sourceName:"RSS",
+    text:"我把家里的 NAS 换成了一台迷你主机", date:Date.now()-41*60000, unread:0, canReply:false, messages:[] },
+  { sid:"slack", key:"C0123", title:"design-system", subtitle:"Slack · #design-system", color:"#e01e5a", sourceName:"Slack",
+    text:"新的 token 命名规则我贴在文档里了", date:Date.now()-2*3600000, unread:0, canReply:true, messages:[] }
+];
+
+const DEFAULT_SETTINGS = {
+  watchMode: "all",
+  watchIds: [],
+  dnd: { enabled: false, from: "22:00", to: "08:00" },
+  muteUntil: 0,
+  keywords: [],
+  mentionOnly: false,
+  autoReadBots: false,
+  notify: true,
+  badge: true,
+  sound: false,
+  side: "right",
+  opacity: 62,
+  clickThrough: true,
+  autoLaunch: false,
+  quickReplies: ["收到", "稍后回你", "好的"]
+};
+
+const MOCK_SOURCES = {
+  telegram:{status:"online",error:""}, imap:{status:"online",error:""},
+  rss:{status:"online",error:""}, github:{status:"online",error:""},
+  slack:{status:"online",error:""}, matrix:{status:"idle",error:""},
+  discord:{status:"idle",error:""}, gitlab:{status:"idle",error:""},
+  safextm:{status:"idle",error:""}, line:{status:"idle",error:""}
+};
+
+const MOCK_SOURCE_CFG = {
+  telegram:{ enabled:true },
+  imap:{ enabled:true, interval:180, accounts:[{ name:"工作邮箱", host:"imap.gmail.com", port:993, secure:true, user:"hi@peterguo.me", pass:"app-password" }] },
+  rss:{ enabled:true, interval:300, feeds:[{ url:"https://sspai.com/feed", name:"少数派" }] },
+  github:{ enabled:true, token:"ghp_preview", interval:120 },
+  slack:{ enabled:true, appToken:"xapp-preview", botToken:"xoxb-preview" },
+  matrix:{ enabled:false, homeserver:"", token:"" },
+  discord:{ enabled:false, token:"" },
+  gitlab:{ enabled:false, baseUrl:"https://gitlab.com", token:"", interval:180 },
+  safextm:{ enabled:false, token:"" },
+  line:{ enabled:false, relay:"", relayToken:"", token:"" }
+};
+
+const mockApi = {
+  getState: async () => ({
+    status: "online",
+    tgStatus: "online",
+    account: "预览模式",
+    dnd: false,
+    totalUnread: 16,
+    settings: settings,
+    sources: MOCK_SOURCES,
+    feeds: MOCK_FEEDS.map(f => Object.assign({ muted:false }, f)),
+    chats: MOCK_CHATS.map(c => Object.assign({
+      sid:"telegram", key:String(c.id), uid:"telegram:"+c.id, id:c.id,
+      color:"#2aabee", sourceName:"Telegram", canReply:true,
+      text:c.last.text, date:c.last.date,
+      watched:true, hot:/紧急|故障|上线/.test(c.last.text||""), isBot:false
+    }, c))
+  }),
+  openChat: async (id) => { toast("预览模式：这里会打开 Telegram"); },
+  login: async () => { toast("预览模式：这里会打开登录向导"); },
+  refresh: async () => {},
+  send: async (id, text) => { toast("预览模式：这里会发送「" + text + "」"); return { ok: true }; },
+  react: async (id, emoji) => { toast("预览模式：这里会给消息点 " + emoji); return { ok: true }; },
+  read: async (id) => { toast("预览模式：这里会标记已读"); return { ok: true }; },
+  getSettings: async () => settings,
+  setSettings: async (patch) => {
+    Object.assign(settings, patch);
+    if (patch.dnd) settings.dnd = Object.assign({}, DEFAULT_SETTINGS.dnd, settings.dnd, patch.dnd);
+    applyLocalSettings();
+    return settings;
+  },
+  exportCfg: async () => JSON.stringify({ settings, sources: MOCK_SOURCE_CFG }, null, 2),
+  importCfg: async (json) => { settings = JSON.parse(json).settings; applyLocalSettings(); return settings; },
+  // 多来源
+  getSources: async () => MOCK_SOURCE_CFG,
+  setSources: async (patch) => { Object.assign(MOCK_SOURCE_CFG, patch); toast("预览模式：配置已保存"); return MOCK_SOURCE_CFG; },
+  restartSource: async () => { toast("预览模式：已重新连接"); return true; },
+  testSource: async () => ({ ok: true, status: "online", error: "" }),
+  feedRead: async () => { toast("预览模式：已标记已读"); return true; },
+  feedSend: async (sid, key, text) => { toast("预览模式：会发送「" + text + "」"); return { ok: true }; },
+  feedOpen: async () => { toast("预览模式：会打开对应的应用"); return true; },
+  onState: () => {},
+  onEvent: () => {}
+};
+
+const api = hasBridge ? window.tgApi : mockApi;
+
+/* ---------- 颜色 ---------- */
+function colorFor(id){
+  let h = 0;
+  const s = String(id);
+  for (let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) & 0xffff;
+  const hue = Math.round(h * 137.508) % 360;
+  return "hsl(" + hue + ", 34%, 43%)";
+}
+function initialOf(title){
+  const s = (title||"?").trim();
+  if (!s) return "?";
+  if (/^[A-Za-z]/.test(s)) return s.slice(0,1).toUpperCase();
+  return s.slice(0,1);
+}
+
+/* ---------- 状态 ---------- */
+let state = { status:"connecting", account:"", chats:[], feeds:[], sources:{}, settings:null, dnd:false };
+let srcFilter = "all";   // all | telegram | imap | rss ...
+let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+let lastUnread = {};
+let booted = false;
+let mode = "rail";
+let cardChatId = null;
+let cardTimer = null;
+
+/* ---------- DOM ---------- */
+const hud = document.getElementById("hud");
+const chatsEl = document.getElementById("chats");
+const plistEl = document.getElementById("plist");
+const pstatEl = document.getElementById("pstat");
+const pfootEl = document.getElementById("pfoot");
+const cardEl = document.getElementById("card");
+const veil = document.getElementById("veil");
+const sheet = document.getElementById("sheet");
+const toastEl = document.getElementById("toast");
+
+/* ---------- 渲染 ---------- */
+function render(){
+  hud.dataset.state = state.status;
+  pstatEl.textContent = statusText();
+  renderSrcBar();
+
+  const pt = document.getElementById("ptitle");
+  if (pt) pt.textContent = srcFilter === "all" ? "全部消息" : ((SRC_META[srcFilter] || ["消息"])[0]);
+
+  const list = visibleChats();
+  renderRail(list);
+  renderPanel(list);
+  pfootEl.textContent = list.length
+    ? (list.length + " 个会话" + (hasMultiSource() ? " · 点击打开对应应用" : " · 点击打开 Telegram"))
+    : "暂无会话";
+}
+
+function hasMultiSource(){
+  const ids = new Set((state.feeds || []).map(f => f.sid));
+  if (state.chats && state.chats.length) ids.add("telegram");
+  return ids.size > 1;
+}
+
+function statusText(){
+  if (state.status === "online"){
+    const ids = new Set((state.feeds || []).map(f => f.sid));
+    if (state.chats && state.chats.length) ids.add("telegram");
+    if (ids.size > 1) return "在线 · " + ids.size + " 个来源";
+    if (state.account) return state.account + " · 在线";
+    return "在线";
+  }
+  if (state.status === "connecting") return "连接中…";
+  if (state.status === "auth-needed") return "需要登录";
+  if (state.status === "error") return "连接出错";
+  return "未连接";
+}
+
+const SRC_META = {
+  telegram: ["Telegram", "#2aabee"],
+  imap:     ["邮件", "#f59e0b"],
+  rss:      ["RSS", "#22c55e"],
+  matrix:   ["Matrix", "#0dbd8b"],
+  discord:  ["Discord", "#5865f2"],
+  slack:    ["Slack", "#e01e5a"],
+  github:   ["GitHub", "#a371f7"],
+  gitlab:   ["GitLab", "#fc6d26"],
+  safextm:  ["SafeXTM", "#34d399"],
+  line:     ["LINE", "#06c755"]
+};
+
+/* 把 Telegram 会话和其他来源拉平成同一个列表 */
+function allItems(){
+  const tg = (state.chats || []).map(c => ({
+    sid: "telegram",
+    key: String(c.id),
+    uid: "telegram:" + c.id,
+    id: c.id,
+    title: c.title,
+    text: c.text || (c.last && c.last.text) || "",
+    date: c.date || (c.last && c.last.date) || 0,
+    unread: c.unread || 0,
+    muted: !!c.muted,
+    pinned: !!c.pinned,
+    photo: c.photo || null,
+    color: "#2aabee",
+    sourceName: "Telegram",
+    canReply: true,
+    messages: c.messages || [],
+    link: null,
+    hot: !!(c.hot || c.watched),
+    out: !!(c.last && c.last.out)
+  }));
+  const fd = (state.feeds || []).map(f => Object.assign({}, f, {
+    uid: f.sid + ":" + f.key,
+    id: f.key,
+    hot: !!f.highlight,
+    out: false,
+    unread: f.unread || 0
+  }));
+  return tg.concat(fd);
+}
+
+function isWatchedItem(x){
+  const ids = settings.watchIds || [];
+  return ids.includes(x.uid) || ids.includes(String(x.key)) || ids.includes(String(x.id));
+}
+
+// 未读优先，其次按时间；最多 9 个；「只盯选中」模式下只显示关注的
+function visibleChats(){
+  const only = settings.watchMode === "only";
+  let arr = allItems();
+  if (srcFilter !== "all") arr = arr.filter(x => x.sid === srcFilter);
+  if (only) arr = arr.filter(isWatchedItem);
+  // TDLib 式顺序：置顶永远在前，其次未读，组内保持服务器顺序（不按时间重排）
+  const idx = new Map(arr.map((x, i) => [x.uid, i]));
+  arr.sort((a, b) => {
+    const ap = a.pinned ? 1 : 0, bp = b.pinned ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    const au = a.unread > 0 ? 1 : 0, bu = b.unread > 0 ? 1 : 0;
+    if (au !== bu) return bu - au;
+    return idx.get(a.uid) - idx.get(b.uid);
+  });
+  return arr.slice(0, 9);
+}
+
+/* 面板顶部的来源筛选，只在接入两个以上来源时出现 */
+function renderSrcBar(){
+  const bar = document.getElementById("srcbar");
+  if (!bar) return;
+  const ids = [];
+  const seen = new Set();
+  if (state.chats && state.chats.length) { seen.add("telegram"); ids.push("telegram"); }
+  (state.feeds || []).forEach(f => { if (!seen.has(f.sid)) { seen.add(f.sid); ids.push(f.sid); } });
+
+  if (srcFilter !== "all" && !ids.includes(srcFilter)) srcFilter = "all";
+
+  if (ids.length < 2) {
+    bar.classList.remove("on");
+    bar.innerHTML = "";
+    srcFilter = "all";
+    return;
+  }
+  bar.classList.add("on");
+  bar.innerHTML = "";
+
+  const chips = [["all", "全部", ""]].concat(
+    ids.map(id => [id, (SRC_META[id] || [id, ""])[0], (SRC_META[id] || ["", ""])[1]])
+  );
+
+  chips.forEach(([id, name, color]) => {
+    const b = document.createElement("button");
+    if (srcFilter === id) b.className = "on";
+    b.innerHTML = (color ? '<i style="background:' + color + '"></i>' : "") + esc(name);
+    b.addEventListener("click", () => { srcFilter = id; render(); });
+    bar.appendChild(b);
+  });
+}
+
+function renderRail(list){
+  chatsEl.innerHTML = "";
+
+  if (!list.length){
+    const noSource = !(state.chats || []).length && !(state.feeds || []).length;
+    // 外部来源还在连的路上时，不要误报成"未连接"
+    const busy = Object.keys(state.sources || {}).some(k => {
+      const st = (state.sources[k] || {}).status;
+      return k !== "telegram" && (st === "online" || st === "connecting");
+    });
+    if ((state.status === "auth-needed" || noSource) && !busy){
+      const tip = document.createElement("div");
+      tip.className = "empty-rail";
+      tip.textContent = "未连接";
+      chatsEl.appendChild(tip);
+
+      const b = document.createElement("button");
+      b.className = "loginbtn";
+      b.textContent = "登录";
+      b.title = "登录 Telegram";
+      b.onclick = () => openLogin();
+      chatsEl.appendChild(b);
+      return;
+    }
+    const d = document.createElement("div");
+    d.className = "empty-rail";
+    d.textContent = state.status === "online" ? "暂无新消息" : "连接中";
+    chatsEl.appendChild(d);
+    return;
+  }
+
+  list.forEach(c => chatsEl.appendChild(chatEl(c)));
+}
+
+function chatEl(c){
+  const el = document.createElement("div");
+  el.className = "chat" + (c.unread > 0 ? " unread" : "") + (c.muted ? " muted" : "") + (c.hot ? " hot" : "");
+  el.dataset.uid = c.uid;
+  el.style.setProperty("--pulse-c", c.color || "#2aabee");
+
+  el.innerHTML =
+    '<div class="ring"></div>' +
+    '<div class="av" style="background:' + (c.photo ? "transparent" : colorFor(c.uid)) + '">' +
+      (c.photo ? '<img src="' + c.photo + '" alt="">' : '<span>' + esc(initialOf(c.title)) + '</span>') +
+    '</div>' +
+    (hasMultiSource() ? '<div class="src" style="background:' + (c.color || "#888") + '"></div>' : '') +
+    (c.unread > 0 ? '<div class="badge">' + (c.unread > 99 ? "99+" : c.unread) + '</div>' : '');
+
+  el.addEventListener("mouseenter", () => showCard(c, el));
+  el.addEventListener("mouseleave", hideCardSoon);
+  el.addEventListener("click", () => openItem(c));
+  return el;
+}
+
+function openItem(c){
+  if (c.sid === "telegram") return api.openChat(c.id);
+  return api.feedOpen(c.sid, c.key);
+}
+
+function renderPanel(list){
+  plistEl.innerHTML = "";
+
+  if (!list.length){
+    const tip = document.createElement("div");
+    tip.style.cssText = "padding:22px 12px;text-align:center;font-size:11px;color:#5c5c66;line-height:1.7";
+    if (state.status === "online"){
+      tip.innerHTML = "这里还没有消息<br><span style='color:#4a4a54;font-size:10px'>点下面的齿轮 → 消息来源，添加第一个来源</span>";
+    } else if (state.status === "auth-needed"){
+      tip.innerHTML = "还没有连接任何应用<br><span style='color:#4a4a54;font-size:10px'>登录 Telegram 或添加其他来源</span>";
+    } else {
+      tip.textContent = "等待连接…";
+    }
+    plistEl.appendChild(tip);
+    return;
+  }
+
+  list.forEach(c => {
+    const row = document.createElement("div");
+    row.className = "row" + (c.unread > 0 ? " unread" : "") + (c.muted ? " muted" : "") + (c.hot ? " hot" : "");
+    row.dataset.uid = c.uid;
+
+    const ringColor = (c.color || "#888888") + "33";
+    row.innerHTML =
+      '<div class="av" style="background:' + (c.photo ? "transparent" : colorFor(c.uid)) + ';box-shadow:0 0 0 1.5px ' + ringColor + '">' +
+        (c.photo ? '<img src="' + c.photo + '" alt="">' : '<span>' + esc(initialOf(c.title)) + '</span>') +
+      '</div>' +
+      '<div class="meta">' +
+        '<div class="name">' + esc(c.title) +
+          (c.pinned ? '<svg class="pin" viewBox="0 0 24 24" width="8" height="8" fill="currentColor" title="置顶"><path d="M14 4v7l2 2v2h-5v5l-1 1-1-1v-5H4v-2l2-2V4c0-.55.45-1 1-1h6c.55 0 1 .45 1 1z"/></svg>' : '') +
+        '</div>' +
+        '<div class="prev">' + (c.out ? "你：" : "") + esc(c.text || "") + '</div>' +
+      '</div>' +
+      '<div class="right">' +
+        '<div class="time">' + shortTime(c.date) + '</div>' +
+        (c.unread > 0 ? '<div class="badge">' + (c.unread > 99 ? "99+" : c.unread) + '</div>' : '') +
+      '</div>';
+    row.addEventListener("click", () => openItem(c));
+    row.addEventListener("mouseenter", () => showCard(c, row));
+    row.addEventListener("mouseleave", hideCardSoon);
+    plistEl.appendChild(row);
+  });
+}
+
+function shortTime(ts){
+  if (!ts) return "";
+  const d = new Date(ts), n = new Date();
+  const sameDay = d.toDateString() === n.toDateString();
+  const p = x => String(x).padStart(2,"0");
+  if (sameDay) return p(d.getHours()) + ":" + p(d.getMinutes());
+  const diff = (n - d) / 864e5;
+  if (diff < 7) return ["日","一","二","三","四","五","六"][d.getDay()];
+  return (d.getMonth()+1) + "/" + d.getDate();
+}
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+}
+
+/* ---------- hover 卡片 ---------- */
+function showCard(c, anchor){
+  clearTimeout(cardTimer);
+  cardChatId = c.uid;
+
+  const msgs = (c.messages && c.messages.length ? c.messages : [{ who:"", text:c.text || "", out:c.out }]).slice(-3);
+  const chips = (settings.quickReplies || []).slice(0, 3);
+  const isTg = c.sid === "telegram";
+  const srcName = c.sourceName || (SRC_META[c.sid] || [""])[0] || "";
+
+  const tools = [];
+  if (isTg) tools.push('<button class="c-tool" data-react="\uD83D\uDC4D" title="给最新消息点赞">赞</button>');
+  tools.push('<button class="c-tool" data-act="read" title="标记已读">已读</button>');
+  tools.push('<button class="c-tool" data-act="open" title="打开">' + (isTg ? "打开" : "跳转") + '</button>');
+
+  cardEl.innerHTML =
+    '<div class="c-head">' +
+      '<div class="av" style="background:' + (c.photo ? "transparent" : colorFor(c.uid)) + '">' +
+        (c.photo ? '<img src="' + c.photo + '" alt="">' : '<span>' + esc(initialOf(c.title)) + '</span>') +
+      '</div>' +
+      '<div><div class="c-title">' + esc(c.title) + '</div>' +
+      '<div class="c-sub">' + (c.unread > 0 ? c.unread + " 条未读" : "没有未读") + (c.muted ? " · 已静音" : "") + (c.hot ? " · <span style='color:#fca5a5'>关键词命中</span>" : "") + '</div></div>' +
+    '</div>' +
+    (srcName ? '<div class="c-src"><i style="background:' + (c.color || "#888") + '"></i>' + esc(srcName) + (c.subtitle ? ' · ' + esc(c.subtitle) : '') + '</div>' : '') +
+    '<div class="c-msgs">' +
+      msgs.map(m =>
+        '<div class="msg' + (m.out ? " out" : "") + '">' +
+          (m.who ? '<span class="who">' + esc(m.out ? "你" : m.who) + '</span>' : '') +
+          '<span class="txt">' + esc(m.text) + '</span>' +
+        '</div>'
+      ).join("") +
+    '</div>' +
+    '<div class="c-tools">' + tools.join("") + '</div>' +
+    (c.canReply
+      ? ('<div class="c-chips">' +
+          chips.map(q => '<button class="chip" data-quick="' + esc(q) + '">' + esc(q) + '</button>').join("") +
+         '</div>' +
+         '<div class="c-reply">' +
+           '<input id="replyInput" placeholder="直接回复，回车发送" maxlength="200">' +
+           '<button id="replySend">发送</button>' +
+         '</div>' +
+         '<div class="c-tip">↵ 发送 · Esc 关闭</div>')
+      : '<div class="c-tip">该来源只支持查看</div>');
+
+  // 表情回应（仅 Telegram）
+  cardEl.querySelectorAll("[data-react]").forEach(b => {
+    b.addEventListener("click", async () => {
+      try { await api.react(c.id, b.dataset.react); toast("已回应"); }
+      catch (e) { toast((e && e.message) || "回应失败"); }
+    });
+  });
+
+  const readBtn = cardEl.querySelector('[data-act="read"]');
+  if (readBtn) readBtn.addEventListener("click", async () => {
+    try {
+      if (isTg) await api.read(c.id);
+      else await api.feedRead(c.sid, c.key);
+      toast("已标记已读");
+    } catch (e) { toast((e && e.message) || "操作失败"); }
+  });
+
+  const openBtn = cardEl.querySelector('[data-act="open"]');
+  if (openBtn) openBtn.addEventListener("click", () => openItem(c));
+
+  cardEl.querySelectorAll("[data-quick]").forEach(b => {
+    b.addEventListener("click", () => {
+      const inp = cardEl.querySelector("#replyInput");
+      if (inp) { inp.value = b.dataset.quick; inp.focus(); }
+    });
+  });
+
+  const input = cardEl.querySelector("#replyInput");
+  const doSend = async () => {
+    if (!input) return;
+    const v = (input.value || "").trim();
+    if (!v) return;
+    input.disabled = true;
+    try {
+      if (isTg) {
+        await api.send(c.id, v);
+      } else {
+        const r = await api.feedSend(c.sid, c.key, v);
+        if (r && r.ok === false) throw new Error(r.error || "发送失败");
+      }
+      input.value = "";
+      toast("已发送");
+    } catch (e) {
+      toast((e && e.message) || "发送失败");
+    } finally {
+      input.disabled = false;
+      setTimeout(() => { try { input.focus(); } catch (err) {} }, 60);
+    }
+  };
+  if (input){
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.stopPropagation(); doSend(); }
+      if (e.key === "Escape") { e.stopPropagation(); hideCardSoon(); }
+    });
+  }
+  const sendBtn = cardEl.querySelector("#replySend");
+  if (sendBtn) sendBtn.addEventListener("click", doSend);
+
+  cardEl.classList.add("show");
+  requestAnimationFrame(() => positionCard(anchor));
+
+  cardEl.onmouseenter = () => clearTimeout(cardTimer);
+  cardEl.onmouseleave = hideCardSoon;
+  const head = cardEl.querySelector(".c-head");
+  if (head){
+    head.style.cursor = "pointer";
+    head.title = isTg ? "在 Telegram 中打开" : "在对应的应用中打开";
+    head.addEventListener("click", () => openItem(c));
+  }
+}
+
+function positionCard(anchor){
+  const r = anchor.getBoundingClientRect();
+  const shell = (hud.getBoundingClientRect());
+  const cw = cardEl.offsetWidth;
+  const ch = cardEl.offsetHeight;
+  let left = shell.left - cw - 12;
+  let top = r.top + r.height/2 - ch/2;
+  top = Math.max(8, Math.min(top, window.innerHeight - ch - 8));
+  if (left < 8) left = r.right + 12;
+  cardEl.style.left = left + "px";
+  cardEl.style.top = top + "px";
+}
+
+function hideCardSoon(){
+  clearTimeout(cardTimer);
+  cardTimer = setTimeout(() => {
+    cardEl.classList.remove("show");
+    cardChatId = null;
+  }, 140);
+}
+
+/* ---------- 模式切换 ---------- */
+document.getElementById("toggle").addEventListener("click", () => setMode("panel"));
+document.getElementById("pclose").addEventListener("click", () => setMode("rail"));
+
+function setMode(m){
+  mode = m;
+  hud.dataset.mode = m;
+  if (m === "panel") hideCardSoon();
+  if (hasBridge && window.tgApi.setMode) window.tgApi.setMode(m);
+}
+
+/* ---------- 登录向导 ---------- */
+function openLogin(){
+  if (hasBridge && window.tgApi.showLogin) { window.tgApi.showLogin(); return; }
+  toast("预览模式：桌面版会弹出登录向导");
+}
+
+/* ---------- 外观设置应用 ---------- */
+function applyLocalSettings(){
+  const s = settings;
+  // 贴边
+  hud.style.right = s.side === "left" ? "auto" : "12px";
+  hud.style.left = s.side === "left" ? "12px" : "auto";
+  hud.style.justifyContent = s.side === "left" ? "flex-start" : "flex-end";
+  hud.style.flexDirection = s.side === "left" ? "row-reverse" : "row";
+  // 不透明度
+  document.body.style.setProperty("--dim-opacity", (s.opacity / 100));
+  document.querySelectorAll("style").forEach(st => {});
+  document.body.style.opacity = "";
+  applyDimStyle(s.opacity);
+  // 点击穿透（embed 模式）
+  updateIgnoreState();
+}
+
+let ignoreOn = false;
+function updateIgnoreState(){
+  const want = isEmbed && settings.clickThrough;
+  if (want === ignoreOn) return;
+  ignoreOn = want;
+  if (!want && hasBridge && window.tgApi.setIgnore) window.tgApi.setIgnore(false);
+  // 开启时由 mousemove 处理器按鼠标位置切换
+}
+
+const dimStyleEl = document.createElement("style");
+document.head.appendChild(dimStyleEl);
+function applyDimStyle(op){
+  dimStyleEl.textContent =
+    "body.dim .hud{opacity:" + (op/100) + "} body.dim .hud:hover{opacity:1} body.attn .hud{opacity:1}";
+}
+
+/* ---------- 设置面板 ---------- */
+function sw(checked){
+  return '<div class="sw' + (checked ? " on" : "") + '"></div>';
+}
+
+/* ==========================================================
+   消息来源：列表 + 逐项配置
+   ========================================================== */
+
+const SRC_ORDER = ["telegram", "imap", "rss", "github", "gitlab", "slack", "matrix", "discord", "safextm", "line"];
+let srcCfgCache = null;
+
+function srcDetail(sid, c, st) {
+  if (st.status === "connecting") return "连接中…";
+  if (st.status === "error" && st.error) return "错误：" + String(st.error).slice(0, 24);
+  if (sid === "telegram") return st.status === "online" ? "已登录" : "未登录，点配置登录";
+  if (!c.enabled) {
+    if (sid === "imap") return "未启用" + ((c.accounts || []).length ? " · " + c.accounts.length + " 个账号" : "");
+    if (sid === "rss") return "未启用" + ((c.feeds || []).length ? " · " + c.feeds.length + " 个订阅" : "");
+    return "未启用";
+  }
+  if (sid === "imap") return (c.accounts || []).length + " 个账号" + (st.status === "online" ? " · 在线" : "");
+  if (sid === "rss") return (c.feeds || []).length + " 个订阅" + (st.status === "online" ? " · 在线" : "");
+  if (sid === "github" || sid === "gitlab") return c.token ? (st.status === "online" ? "在线" : "未连接") : "未填 Token";
+  if (sid === "slack") return c.appToken ? (st.status === "online" ? "在线" : "未连接") : "未填 Token";
+  if (sid === "discord") return c.token ? (st.status === "online" ? "在线" : "未连接") : "未填 Token";
+  if (sid === "matrix") return c.homeserver ? (st.status === "online" ? "在线" : "未连接") : "未填地址";
+  if (sid === "safextm") return c.token ? (st.status === "online" ? "在线" : "未连接") : "未填 Token";
+  if (sid === "line") return c.relay ? (st.status === "online" ? "在线" : "未连接") : "未填中转地址";
+  return st.status === "online" ? "在线" : "未连接";
+}
+
+function srcRowHtml(sid, cfg) {
+  const meta = SRC_META[sid] || [sid, "#888"];
+  const st = (state.sources || {})[sid] || { status: "idle", error: "" };
+  const c = cfg[sid] || {};
+  return '<div class="srow">' +
+    '<span class="srcname">' +
+      '<i style="background:' + meta[1] + '"></i>' +
+      '<span class="sn-t">' + esc(meta[0]) + '<small>' + esc(srcDetail(sid, c, st)) + '</small></span>' +
+    '</span>' +
+    '<span class="srcacts">' +
+      '<button class="btn tiny" data-cfg="' + sid + '">' + (sid === "telegram" ? (st.status === "online" ? "账号" : "登录") : "配置") + '</button>' +
+      (sid === "telegram" ? "" : '<span class="sw' + (c.enabled ? " on" : "") + '" data-src-on="' + sid + '"></span>') +
+    '</span>' +
+  '</div>';
+}
+
+function inp(label, k, val, ph, type) {
+  return '<label class="flabel">' + esc(label) + '</label>' +
+    '<input class="tinput wide" data-k="' + k + '"' +
+    (type ? ' type="' + type + '"' : '') +
+    ' placeholder="' + esc(ph || "") + '" value="' + esc(val === undefined || val === null ? "" : val) + '">';
+}
+
+function imapAccRow(a) {
+  a = a || {};
+  return '<div class="accbox">' +
+    '<div class="accbar"><b>' + esc(a.name || a.user || "新账号") + '</b>' +
+      '<button class="btn tiny" data-delacc="1">删除</button></div>' +
+    '<div class="accgrid">' +
+      '<div class="fld">' + inp("名称", "name", a.name, "工作邮箱") + '</div>' +
+      '<div class="fld">' + inp("IMAP 服务器", "host", a.host, "imap.gmail.com") + '</div>' +
+      '<div class="fld">' + inp("端口", "port", a.port || 993, "993", "number") + '</div>' +
+      '<div class="fld">' + inp("邮箱地址", "user", a.user, "you@gmail.com") + '</div>' +
+      '<div class="fld">' + inp("密码 / 授权码", "pass", a.pass, "应用专用密码", "password") + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function imapForm(cfg) {
+  const list = Array.isArray(cfg.accounts) ? cfg.accounts : [];
+  return '<div id="imapAccs">' + (list.length ? list.map(imapAccRow).join("") : imapAccRow({})) + '</div>' +
+    '<div style="margin:2px 0 4px"><button class="btn tiny" id="imapAdd">+ 添加账号</button></div>' +
+    '<label class="flabel">检查间隔（秒）</label>' +
+    '<input class="tinput wide" id="imapInt" type="number" value="' + (cfg.interval || 180) + '">';
+}
+
+function rssForm(cfg) {
+  const list = Array.isArray(cfg.feeds) ? cfg.feeds : [];
+  const lines = list.map(f => (f.name ? f.name + " | " : "") + f.url).join("\n");
+  return '<label class="flabel">订阅地址<small>每行一个，可写成「名称 | 地址」</small></label>' +
+    '<textarea class="tinput wide ta" id="rssFeeds" rows="5" placeholder="少数派 | https://sspai.com/feed">' + esc(lines) + '</textarea>' +
+    '<label class="flabel">检查间隔（秒）</label>' +
+    '<input class="tinput wide" id="rssInt" type="number" value="' + (cfg.interval || 300) + '">';
+}
+
+const SRC_INTRO = {
+  telegram: ["用你自己的 Telegram 账号登录，能收到私聊、群和频道。", ""],
+  imap: ["读邮箱里未读的邮件，一个邮箱算一个会话。",
+         "Gmail / Outlook 需要先在账号安全设置里生成「应用专用密码」，直接用登录密码会认证失败。"],
+  rss: ["粘贴订阅地址即可，不需要任何账号。",
+        "首次拉取只建立基线，之后的新条目才计未读，不会一上来就满屏红点。"],
+  github: ["读你账号的通知流，按仓库聚合。",
+           "在 GitHub → Settings → Developer settings → Personal access tokens 生成，勾选 notifications。"],
+  gitlab: ["读待办事项（todos），按项目聚合。",
+           "在 GitLab → Preferences → Access Tokens 生成，勾选 read_api。自建实例记得改地址。"],
+  slack: ["实时接收频道和私信，用 Socket Mode，不需要公网地址。",
+          "App-Level Token（xapp-）用于接收，Bot Token（xoxb-）用于读频道名和发消息，两个都要。"],
+  matrix: ["homeserver 写完整地址（含 https://），access token 在 Element 的「设置 → 帮助与关于 → 访问令牌」里。", ""],
+  discord: ["在开发者门户建应用 → Bot → 复制 Token，并打开 MESSAGE CONTENT INTENT。",
+            "然后把 Bot 邀请进要监听的服务器，否则收不到任何消息。"],
+  safextm: ["以机器人方式接入 SafeXTM（safextm.com），能收发给机器人的私聊和群消息，支持挂件内直接回复。",
+            "在 SafeXTM 里找 @BotFather 发送 /newbot 创建机器人，把得到的完整 Token 粘贴进来。注意：只能收到发给这个机器人的消息，收不到你账号的全部会话。"],
+  line: ["两种玩法任选：A. 建一个免费官方账号（用你自己的 LINE 账号就能建，不需要额外机器人），收发给它的私聊和所在群消息；B. 不建账号，用 Android 手机的 MacroDroid 监听 LINE 通知转发到中转（tools/line-worker.js 里的 /notify），能收到手机上的全部 LINE 消息。",
+         "LINE 只支持 webhook 推送，电脑在家庭网络里收不到，需要一个公网中转：把项目里的 tools/line-worker.js 部署到 Cloudflare Workers（免费，文件头部有完整步骤），再把 Worker 地址、中转口令填进来；玩法 A 还要加填 Channel Access Token。iOS 没法读通知内容，玩法 B 只支持 Android。"]
+};
+
+async function openSourceConfig(sid) {
+  if (sid === "telegram") { openLogin(); return; }
+  // LINE 配置链路长（中转部署 / 官方账号 / 手机宏），真机打开分步向导窗口
+  if (sid === "line" && hasBridge) { window.tgApi.showLineSetup(); return; }
+
+  const cfg = (srcCfgCache || {})[sid] || {};
+  const meta = SRC_META[sid] || [sid, "#888"];
+  const intro = SRC_INTRO[sid] || ["", ""];
+
+  let form = "";
+  if (sid === "imap") form = imapForm(cfg);
+  else if (sid === "rss") form = rssForm(cfg);
+  else if (sid === "github") form = inp("Personal Access Token", "token", cfg.token, "ghp_...", "password") +
+    '<label class="flabel">检查间隔（秒）</label><input class="tinput wide" id="srcInt" type="number" value="' + (cfg.interval || 120) + '">';
+  else if (sid === "gitlab") form = inp("服务器地址", "baseUrl", cfg.baseUrl || "https://gitlab.com", "https://gitlab.com") +
+    inp("Private Token", "token", cfg.token, "glpat-...", "password") +
+    '<label class="flabel">检查间隔（秒）</label><input class="tinput wide" id="srcInt" type="number" value="' + (cfg.interval || 180) + '">';
+  else if (sid === "slack") form = inp("App-Level Token", "appToken", cfg.appToken, "xapp-...", "password") +
+    inp("Bot Token", "botToken", cfg.botToken, "xoxb-...", "password");
+  else if (sid === "matrix") form = inp("Homeserver", "homeserver", cfg.homeserver, "https://matrix.org") +
+    inp("Access Token", "token", cfg.token, "syt_...", "password");
+  else if (sid === "discord") form = inp("Bot Token", "token", cfg.token, "MTIz...", "password");
+  else if (sid === "safextm") form = inp("Bot Token", "token", cfg.token, "4839574812:AAFD...", "password");
+  else if (sid === "line") form =
+    '<label class="flabel">中转服务地址</label><input class="tinput wide" data-k="relay" placeholder="https://line-hud.你的子域.workers.dev" value="' + esc(cfg.relay || "") + '">' +
+    inp("中转口令", "relayToken", cfg.relayToken, "Worker 里的 ACCESS_TOKEN", "password") +
+    inp("Channel Access Token", "token", cfg.token, "LINE Developers Console 签发", "password");
+
+  sheet.innerHTML =
+    '<button class="btn tiny" id="srcBack">‹ 返回</button>' +
+    '<h3 style="margin-top:10px">' + esc(meta[0]) + '</h3>' +
+    '<p>' + esc(intro[0]) + '</p>' +
+    '<div class="set-grid">' + form + '</div>' +
+    (intro[1] ? '<div class="hint">' + esc(intro[1]) + '</div>' : '') +
+    '<div class="sbtn-row">' +
+      '<button class="btn" id="srcTest">测试连接</button>' +
+      '<button class="btn primary" id="srcSave">保存并启用</button>' +
+    '</div>' +
+    '<div class="hint" id="srcMsg"></div>';
+
+  sheet.querySelector("#srcBack").addEventListener("click", () => openSettings());
+
+  if (sid === "imap") {
+    const add = sheet.querySelector("#imapAdd");
+    if (add) add.addEventListener("click", () => {
+      sheet.querySelector("#imapAccs").insertAdjacentHTML("beforeend", imapAccRow({}));
+      bindDelAcc();
+    });
+    bindDelAcc();
+  }
+
+  function bindDelAcc() {
+    sheet.querySelectorAll("[data-delacc]").forEach(b => {
+      b.onclick = () => {
+        const boxes = sheet.querySelectorAll(".accbox");
+        if (boxes.length <= 1) { toast("至少保留一个账号"); return; }
+        b.closest(".accbox").remove();
+      };
+    });
+  }
+
+  const collect = () => {
+    if (sid === "imap") {
+      const accounts = [];
+      sheet.querySelectorAll(".accbox").forEach(box => {
+        const o = {};
+        box.querySelectorAll("[data-k]").forEach(el => { o[el.dataset.k] = el.value.trim(); });
+        if (!o.host || !o.user || !o.pass) return;
+        o.port = Number(o.port) || 993;
+        o.secure = o.port !== 143;
+        accounts.push(o);
+      });
+      const it = sheet.querySelector("#imapInt");
+      return { enabled: true, interval: Number(it && it.value) || 180, accounts };
+    }
+    if (sid === "rss") {
+      const raw = (sheet.querySelector("#rssFeeds").value || "").split("\n");
+      const feeds = [];
+      raw.forEach(line => {
+        const t = line.trim();
+        if (!t) return;
+        if (t.includes("|")) {
+          const [name, url] = t.split("|");
+          if (/^https?:\/\//i.test((url || "").trim())) feeds.push({ name: name.trim(), url: url.trim() });
+        } else if (/^https?:\/\//i.test(t)) {
+          feeds.push({ url: t });
+        }
+      });
+      const it = sheet.querySelector("#rssInt");
+      return { enabled: true, interval: Number(it && it.value) || 300, feeds };
+    }
+    const o = { enabled: true };
+    sheet.querySelectorAll("[data-k]").forEach(el => { o[el.dataset.k] = el.value.trim(); });
+    const it = sheet.querySelector("#srcInt");
+    if (it) o.interval = Number(it.value) || 120;
+    return o;
+  };
+
+  const msg = sheet.querySelector("#srcMsg");
+
+  sheet.querySelector("#srcTest").addEventListener("click", async () => {
+    const c = collect();
+    msg.textContent = "正在连接…";
+    try {
+      const r = await api.testSource(sid, c);
+      msg.innerHTML = r && r.ok
+        ? '<span style="color:#4ade80">连接成功</span>'
+        : '<span style="color:#f87171">' + esc((r && r.error) || "连接失败") + '</span>';
+    } catch (e) {
+      msg.innerHTML = '<span style="color:#f87171">' + esc((e && e.message) || "测试失败") + '</span>';
+    }
+  });
+
+  sheet.querySelector("#srcSave").addEventListener("click", async () => {
+    const c = collect();
+    const bad = checkSrcCfg(sid, c);
+    if (bad) { msg.innerHTML = '<span style="color:#f87171">' + esc(bad) + '</span>'; return; }
+    msg.textContent = "正在保存并连接…";
+    try {
+      srcCfgCache = await api.setSources({ [sid]: c });
+      toast(meta[0] + " 已启用");
+      await openSettings();
+    } catch (e) {
+      msg.innerHTML = '<span style="color:#f87171">' + esc((e && e.message) || "保存失败") + '</span>';
+    }
+  });
+}
+
+function checkSrcCfg(sid, c) {
+  if (sid === "imap") {
+    if (!c.accounts.length) return "至少填一个完整的邮箱账号（服务器、邮箱、密码都要有）";
+  }
+  if (sid === "rss") {
+    if (!c.feeds.length) return "至少填一个以 http 开头的订阅地址";
+  }
+  if (sid === "github" || sid === "gitlab" || sid === "discord" || sid === "matrix" || sid === "safextm") {
+    if (!c.token) return "Token 还没填";
+  }
+  if (sid === "line") {
+    if (!/^https?:\/\//i.test(c.relay || "")) return "中转服务地址要以 https:// 开头（Cloudflare Worker 地址）";
+    if (!c.relayToken) return "中转口令还没填";
+    // Channel Access Token 可选：玩法 B（手机转发）不填也能收
+  }
+  if (sid === "matrix" && !/^https?:\/\//i.test(c.homeserver || "")) return "Homeserver 要写完整地址，以 https:// 开头";
+  if (sid === "gitlab" && !/^https?:\/\//i.test(c.baseUrl || "")) return "GitLab 地址要以 https:// 开头";
+  if (sid === "slack" && !c.appToken) return "App-Level Token（xapp-）必填";
+  return "";
+}
+
+async function openSettings(){
+  const s = settings;
+  const muted = s.muteUntil && Date.now() < s.muteUntil;
+
+  if (!srcCfgCache && api.getSources){
+    try { srcCfgCache = await api.getSources(); } catch (e) { srcCfgCache = {}; }
+  }
+  const cfg = srcCfgCache || {};
+
+  sheet.innerHTML =
+    '<h3>挂件设置</h3>' +
+    '<p style="margin-bottom:10px">' + (state.account ? esc(state.account) + " · " : "") + (s.watchMode === "only" ? "正在只盯选中的会话" : "正在接收全部会话") + (muted ? ' · <span style="color:#fbbf24">一键静音中</span>' : "") + '</p>' +
+
+    '<div class="set-grid">' +
+      '<h4>消息来源</h4>' +
+      SRC_ORDER.map(sid => srcRowHtml(sid, cfg)).join("") +
+      '<div class="hint">各来源独立连接，一个出错不影响其他。开关是启用/停用，凭证在「配置」里填</div>' +
+    '</div>' +
+
+    '<div class="set-grid">' +
+      '<h4>关注的会话</h4>' +
+      '<div class="srow"><span>模式</span>' +
+        '<div class="seg" id="segWatch">' +
+          '<button data-v="all" class="' + (s.watchMode !== "only" ? "on" : "") + '">全部</button>' +
+          '<button data-v="only" class="' + (s.watchMode === "only" ? "on" : "") + '">只盯选中</button>' +
+        '</div></div>' +
+      '<div class="watch-list" id="watchList">' +
+        (allItems().length ? allItems().slice(0, 40).map(c =>
+          '<div class="witem' + ((s.watchIds || []).includes(c.uid) ? " sel" : "") + '" data-uid="' + esc(c.uid) + '">' +
+            '<div class="cb">✓</div>' +
+            '<div class="av" style="background:' + (c.photo ? "transparent" : colorFor(c.uid)) + '">' +
+              (c.photo ? '<img src="' + c.photo + '" alt="">' : esc(initialOf(c.title))) + '</div>' +
+            '<div class="nm">' + esc(c.title) + '</div>' +
+          '</div>'
+        ).join("") : '<div style="padding:12px;text-align:center;font-size:10.5px;color:#5c5c66">还没有会话数据</div>') +
+      '</div>' +
+      '<div class="hint">勾选后切到「只盯选中」，其余会话将不再显示和提醒</div>' +
+    '</div>' +
+
+    '<div class="set-grid">' +
+      '<h4>不打扰</h4>' +
+      '<div class="srow"><span>免打扰时段<small>此时间段内静默，关键词和点名仍会提醒</small></span>' + sw(s.dnd.enabled) + '</div>' +
+      '<div class="srow" id="dndTimes" style="' + (s.dnd.enabled ? "" : "display:none") + '">' +
+        '<span>从 / 到</span>' +
+        '<div style="display:flex;gap:6px">' +
+          '<input class="tinput" id="dndFrom" type="time" value="' + esc(s.dnd.from) + '">' +
+          '<input class="tinput" id="dndTo" type="time" value="' + esc(s.dnd.to) + '">' +
+        '</div></div>' +
+      '<div class="srow"><span>只提醒被点名<small>被 @、被回复或命中关键词时才提醒</small></span>' + sw(s.mentionOnly) + '</div>' +
+      '<div class="srow"><span>机器人消息自动已读</span>' + sw(s.autoReadBots) + '</div>' +
+      '<div class="sbtn-row"><button class="btn" id="btnMuteHour">' + (muted ? "取消一键静音" : "一键静音 1 小时") + '</button></div>' +
+    '</div>' +
+
+    '<div class="set-grid">' +
+      '<h4>关键词提醒</h4>' +
+      '<input class="tinput wide" id="kwInput" placeholder="多个词用逗号隔开，如：紧急,故障,上线" value="' + esc((s.keywords || []).join(",")) + '">' +
+      '<div class="hint">命中的消息会标红并穿透免打扰</div>' +
+    '</div>' +
+
+    '<div class="set-grid">' +
+      '<h4>提醒方式</h4>' +
+      '<div class="srow"><span>系统通知</span>' + sw(s.notify) + '</div>' +
+      '<div class="srow"><span>通知声音</span>' + sw(s.sound) + '</div>' +
+      '<div class="srow"><span>未读角标<small>macOS Dock；Linux 任务栏</small></span>' + sw(s.badge) + '</div>' +
+    '</div>' +
+
+    '<div class="set-grid">' +
+      '<h4>外观</h4>' +
+      '<div class="srow"><span>贴边</span>' +
+        '<div class="seg" id="segSide">' +
+          '<button data-v="left" class="' + (s.side === "left" ? "on" : "") + '">左侧</button>' +
+          '<button data-v="right" class="' + (s.side !== "left" ? "on" : "") + '">右侧</button>' +
+        '</div></div>' +
+      '<div class="srow"><span>平时不透明度</span>' +
+        '<div class="range-row" style="max-width:150px">' +
+          '<input type="range" id="opRange" min="25" max="100" value="' + (s.opacity || 62) + '">' +
+          '<b id="opVal">' + (s.opacity || 62) + '%</b>' +
+        '</div></div>' +
+      '<div class="srow"><span>鼠标离开时点击穿透</span>' + sw(s.clickThrough) + '</div>' +
+    '</div>' +
+
+    '<div class="set-grid">' +
+      '<h4>快捷回复短语</h4>' +
+      '<input class="tinput wide" id="qrInput" placeholder="最多 3 条，逗号隔开" value="' + esc((s.quickReplies || []).join(",")) + '">' +
+    '</div>' +
+
+    '<div class="set-grid">' +
+      '<h4>系统</h4>' +
+      '<div class="srow"><span>开机自启</span>' + sw(s.autoLaunch) + '</div>' +
+      '<ul class="hintlist">' +
+        '<li>呼出 / 隐藏挂件 <code>Ctrl+Shift+T</code></li>' +
+        '<li>一键静音一小时 <code>Ctrl+Shift+D</code></li>' +
+      '</ul>' +
+      '<div class="sbtn-row">' +
+        '<button class="btn" id="btnExport">导出配置</button>' +
+        '<button class="btn" id="btnImport">导入配置</button>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="sbtn-row"><button class="btn primary" id="btnSaveSettings">保存</button></div>' +
+    '<div class="hint">保存即生效，无需重启。右键挂件也可操作。</div>';
+
+  veil.classList.add("show");
+
+  // ---- 交互 ----
+  // 开关按设置面板中的出现顺序绑定
+  bindSw(0, "dndEnabled");
+  bindSw(1, "mentionOnly");
+  bindSw(2, "autoReadBots");
+  bindSw(3, "notify");
+  bindSw(4, "sound");
+  bindSw(5, "badge");
+  bindSw(6, "clickThrough");
+  bindSw(7, "autoLaunch");
+
+  function bindSw(idx, key){
+    const els = Array.from(sheet.querySelectorAll(".sw")).filter(e => !e.dataset.srcOn);
+    if (!els[idx]) return;
+    els[idx].addEventListener("click", () => {
+      const on = els[idx].classList.contains("on");
+      const patch = {};
+      patch[key] = on;
+      if (key === "dndEnabled"){
+        settings.dnd.enabled = on;
+        const t = sheet.querySelector("#dndTimes");
+        if (t) t.style.display = on ? "" : "none";
+      }
+      if (key !== "dndEnabled") settings[key] = on;
+      if (hasBridge) api.setSettings(key === "dndEnabled" ? { dnd: settings.dnd } : patch);
+      else applyLocalSettings();
+    });
+  }
+
+  // 来源开关：启用/停用，凭证沿用已保存的
+  sheet.querySelectorAll("[data-src-on]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const sid = el.dataset.srcOn;
+      el.classList.toggle("on");
+      const on = el.classList.contains("on");
+      const base = Object.assign({}, (srcCfgCache || {})[sid] || {});
+      base.enabled = on;
+      try {
+        srcCfgCache = await api.setSources({ [sid]: base });
+        toast(on ? "已启用" : "已停用");
+      } catch (e) {
+        toast("切换失败");
+      }
+      await openSettings();
+    });
+  });
+
+  // 来源配置入口
+  sheet.querySelectorAll("[data-cfg]").forEach(el => {
+    el.addEventListener("click", () => openSourceConfig(el.dataset.cfg));
+  });
+
+  // 模式切换
+  sheet.querySelectorAll("#segWatch button").forEach(b => b.addEventListener("click", async () => {
+    sheet.querySelectorAll("#segWatch button").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    settings.watchMode = b.dataset.v;
+    if (hasBridge) await api.setSettings({ watchMode: settings.watchMode });
+    render();
+  }));
+
+  // 勾选关注
+  sheet.querySelectorAll(".witem").forEach(el => el.addEventListener("click", () => {
+    el.classList.toggle("sel");
+    const uid = el.dataset.uid;
+    if (!Array.isArray(settings.watchIds)) settings.watchIds = [];
+    const i = settings.watchIds.indexOf(uid);
+    if (el.classList.contains("sel") && i < 0) settings.watchIds.push(uid);
+    if (!el.classList.contains("sel") && i >= 0) settings.watchIds.splice(i, 1);
+    if (hasBridge) api.setSettings({ watchIds: settings.watchIds });
+  }));
+
+  // 一键静音
+  const bm = sheet.querySelector("#btnMuteHour");
+  if (bm) bm.addEventListener("click", async () => {
+    const muted = settings.muteUntil && Date.now() < settings.muteUntil;
+    settings.muteUntil = muted ? 0 : Date.now() + 3600e3;
+    if (hasBridge) await api.setSettings({ muteUntil: settings.muteUntil });
+    bm.textContent = muted ? "一键静音 1 小时" : "取消一键静音";
+    toast(muted ? "已取消静音" : "已静音 1 小时");
+  });
+
+  // 贴边
+  sheet.querySelectorAll("#segSide button").forEach(b => b.addEventListener("click", async () => {
+    sheet.querySelectorAll("#segSide button").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    settings.side = b.dataset.v;
+    if (hasBridge) await api.setSettings({ side: settings.side });
+    applyLocalSettings();
+  }));
+
+  // 透明度
+  const op = sheet.querySelector("#opRange");
+  if (op) op.addEventListener("input", () => {
+    sheet.querySelector("#opVal").textContent = op.value + "%";
+    applyDimStyle(Number(op.value));
+  });
+
+  // 保存
+  sheet.querySelector("#btnSaveSettings").addEventListener("click", async () => {
+    const kw = (sheet.querySelector("#kwInput").value || "")
+      .split(/[,，]/).map(x => x.trim()).filter(Boolean);
+    const qr = (sheet.querySelector("#qrInput").value || "")
+      .split(/[,，]/).map(x => x.trim()).filter(Boolean).slice(0, 3);
+    const dndFrom = sheet.querySelector("#dndFrom");
+    const dndTo = sheet.querySelector("#dndTo");
+    settings.keywords = kw;
+    settings.quickReplies = qr.length ? qr : ["收到", "稍后回你", "好的"];
+    settings.opacity = Number(op.value) || 62;
+    if (dndFrom && dndTo) settings.dnd = Object.assign({}, settings.dnd, { from: dndFrom.value, to: dndTo.value });
+    const patch = {
+      keywords: settings.keywords,
+      quickReplies: settings.quickReplies,
+      opacity: settings.opacity,
+      dnd: settings.dnd,
+      watchIds: settings.watchIds,
+      watchMode: settings.watchMode,
+      side: settings.side,
+      mentionOnly: settings.mentionOnly,
+      autoReadBots: settings.autoReadBots,
+      notify: settings.notify,
+      sound: settings.sound,
+      badge: settings.badge,
+      clickThrough: settings.clickThrough,
+      autoLaunch: settings.autoLaunch
+    };
+    if (hasBridge) await api.setSettings(patch);
+    applyLocalSettings();
+    render();
+    veil.classList.remove("show");
+    toast("设置已保存");
+  });
+
+  // 导出 / 导入
+  const be = sheet.querySelector("#btnExport");
+  if (be) be.addEventListener("click", async () => {
+    const json = await api.exportCfg();
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "tg-hud-config.json";
+    a.click();
+    toast("配置已导出");
+  });
+  const bi = sheet.querySelector("#btnImport");
+  if (bi) bi.addEventListener("click", () => {
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = ".json";
+    inp.onchange = async () => {
+      if (!inp.files[0]) return;
+      const text = await inp.files[0].text();
+      try {
+        settings = await api.importCfg(text);
+        applyLocalSettings();
+        render();
+        veil.classList.remove("show");
+        toast("配置已导入");
+      } catch (e) { toast("导入失败：文件格式不对"); }
+    };
+    inp.click();
+  });
+}
+
+veil.addEventListener("click", e => {
+  if (e.target === veil) veil.classList.remove("show");
+});
+document.getElementById("btnSettings").addEventListener("click", openSettings);
+
+/* ---------- toast ---------- */
+let tt;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(tt);
+  tt = setTimeout(() => toastEl.classList.remove("show"), 1800);
+}
+
+/* ---------- 接收主进程推送 ---------- */
+function applyState(next, event){
+  const prevUnread = lastUnread;
+  state = next;
+  if (next.settings) settings = Object.assign(settings, next.settings);
+  applyLocalSettings();
+
+  // 未连接时保持清晰，连上之后进入低调模式；免打扰时整体更暗
+  document.body.classList.toggle("dim", next.status !== "auth-needed");
+  document.body.classList.toggle("dnd", !!next.dnd);
+  render();
+
+  const items = allItems();
+
+  // 首次载入只记录基线，不当作新消息
+  if (!booted){
+    booted = true;
+    items.forEach(c => { prevUnread[c.uid] = c.unread || 0; });
+    lastUnread = prevUnread;
+    return;
+  }
+
+  // 找出这轮新增未读的会话
+  const bumped = [];
+  items.forEach(c => {
+    const before = prevUnread[c.uid] || 0;
+    if (c.unread > before) bumped.push(c.uid);
+    prevUnread[c.uid] = c.unread;
+  });
+  lastUnread = prevUnread;
+
+  if (bumped.length){
+    flash(bumped);
+    document.body.classList.add("attn");
+    setTimeout(() => document.body.classList.remove("attn"), 3200);
+  }
+}
+
+function flash(uids){
+  uids.forEach((uid, i) => {
+    setTimeout(() => {
+      // 不用属性选择器，避免 url 里的特殊字符破坏查询
+      const els = Array.prototype.slice
+        .call(document.querySelectorAll("[data-uid]"))
+        .filter(el => el.dataset.uid === uid);
+      els.forEach(el => {
+        el.classList.add("pulse");
+        setTimeout(() => el.classList.remove("pulse"), 2900);
+      });
+    }, i * 120);
+  });
+}
+
+/* ---------- 启动 ---------- */
+if (hasBridge){
+  window.tgApi.onState((s) => applyState(s));
+  window.tgApi.onEvent((e) => {
+    if (e.type === "toast") toast(e.message);
+    if (e.type === "auth-needed") openLogin();
+    if (e.type === "flash" && e.uid) flash([e.uid]);
+    if (e.type === "flash" && e.chatId) flash(["telegram:" + e.chatId]);
+  });
+}
+
+(async () => {
+  // 先拿设置（决定贴边、透明度等外观），再拿状态
+  try {
+    const s = await api.getSettings();
+    if (s) settings = Object.assign(settings, s);
+    applyLocalSettings();
+  } catch (e) {}
+  try {
+    const s = await api.getState();
+    applyState(s);
+  } catch (e) {
+    applyState({ status:"error", account:"", chats:[] });
+  }
+})();
+
+/* ---------- 嵌入模式 ---------- */
+if (isEmbed){
+  document.body.classList.add("transparent");
+  hud.style.right = "12px";
+
+  // 鼠标不在挂件上时让点击穿透到桌面（可在设置里关掉）
+  document.addEventListener("mousemove", (e) => {
+    if (!settings.clickThrough || !hasBridge || !window.tgApi.setIgnore) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const inside = !!(el && el.closest(".hud, .card, .veil"));
+    if (inside !== ign){
+      ign = inside;
+      window.tgApi.setIgnore(!inside);
+    }
+  }, true);
+  let ign = null;
+}
+
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (hasBridge && window.tgApi.menu) window.tgApi.menu();
+});
+</script>
+</body>
+</html>

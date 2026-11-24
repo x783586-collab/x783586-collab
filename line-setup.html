@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>接入 LINE</title>
+<style>
+:root{
+  --fg:#e9e9ee;--muted:#8b8b96;--faint:#5c5c66;
+  --line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.16);
+  --ln:#06c755;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  background:#0c0c10;color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:26px;overflow-y:auto;
+  scrollbar-width:none;
+}
+body::-webkit-scrollbar{width:0;height:0}
+.wrap{width:100%;max-width:420px}
+.logo{
+  width:44px;height:44px;border-radius:14px;margin-bottom:16px;
+  background:linear-gradient(145deg,#2ad46f,#05b14a);
+  display:grid;place-items:center;
+  box-shadow:0 10px 30px -8px rgba(6,199,85,.55);
+}
+.logo svg{width:26px;height:26px;fill:#fff}
+h1{font-size:17px;font-weight:650;margin:0 0 6px;letter-spacing:-.01em}
+.sub{font-size:11.5px;color:var(--muted);line-height:1.65;margin:0 0 20px;text-wrap:pretty}
+.step{display:none}
+.step.on{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+label{display:block;font-size:10.5px;color:var(--faint);margin:0 0 6px;letter-spacing:.02em}
+input{
+  width:100%;height:38px;border-radius:10px;border:1px solid var(--line);
+  background:rgba(255,255,255,.045);color:var(--fg);font-size:13px;
+  padding:0 11px;font-family:inherit;outline:none;transition:.16s;margin-bottom:12px;
+}
+input:focus{border-color:rgba(6,199,85,.55);background:rgba(6,199,85,.06)}
+input::placeholder{color:#4a4a54}
+button{
+  width:100%;height:38px;border-radius:10px;border:1px solid var(--line);
+  background:rgba(255,255,255,.06);color:var(--fg);font-size:12.5px;
+  font-weight:600;cursor:pointer;font-family:inherit;transition:.16s;
+}
+button:hover{background:rgba(255,255,255,.12)}
+button.primary{background:var(--ln);color:#04140a;border-color:var(--ln)}
+button.primary:hover{background:#2bdc74}
+button:disabled{opacity:.45;cursor:default}
+.err{
+  font-size:11px;color:#fca5a5;background:rgba(248,113,113,.1);
+  border:1px solid rgba(248,113,113,.2);border-radius:8px;
+  padding:8px 10px;line-height:1.5;margin-bottom:12px;display:none;
+}
+.err.on{display:block}
+.okmsg{
+  font-size:11px;color:#86efac;background:rgba(74,222,128,.1);
+  border:1px solid rgba(74,222,128,.22);border-radius:8px;
+  padding:8px 10px;line-height:1.5;margin-bottom:12px;display:none;
+}
+.okmsg.on{display:block}
+.note{
+  font-size:10px;color:#4f4f59;line-height:1.6;margin-top:14px;
+  border-top:1px solid rgba(255,255,255,.05);padding-top:12px;
+}
+/* 步骤条 */
+.crumbs{display:flex;align-items:center;gap:6px;margin-bottom:16px}
+.crumb{
+  font-size:10px;color:#63636e;padding:3px 9px;border-radius:20px;
+  border:1px solid var(--line);white-space:nowrap;
+}
+.crumb.on{color:#0b1a10;background:var(--ln);border-color:var(--ln);font-weight:650}
+.crumb.done{color:#5fd494;border-color:rgba(6,199,85,.3)}
+.csep{font-size:9px;color:#43434c}
+/* 玩法卡片 */
+.modecard{
+  border:1px solid var(--line);border-radius:12px;
+  background:rgba(255,255,255,.03);padding:13px 14px;margin-bottom:12px;
+  cursor:pointer;transition:.16s;position:relative;
+}
+.modecard:hover{border-color:rgba(6,199,85,.45);background:rgba(6,199,85,.05)}
+.modecard b{font-size:12.5px;display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.modecard small{font-size:10.5px;color:var(--muted);line-height:1.6;display:block}
+.mtag{
+  font-size:9px;padding:2px 7px;border-radius:10px;font-weight:600;
+  background:rgba(6,199,85,.14);color:#5fe396;flex:0 0 auto;
+}
+/* 说明折叠面板（同 login） */
+.guide{
+  border:1px solid var(--line);border-radius:11px;
+  background:rgba(255,255,255,.028);
+  margin-bottom:16px;overflow:hidden;transition:border-color .16s;
+}
+.guide[open]{border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.04)}
+.guide summary{
+  list-style:none;cursor:pointer;user-select:none;
+  padding:10px 12px;font-size:11.5px;color:#9a9aa6;
+  display:flex;align-items:center;gap:7px;
+}
+.guide summary::-webkit-details-marker{display:none}
+.guide summary:hover{color:var(--fg)}
+.gd-ico{
+  width:15px;height:15px;border-radius:50%;flex:0 0 auto;
+  background:rgba(6,199,85,.16);color:#6fe8a3;
+  display:grid;place-items:center;font-size:9.5px;font-weight:700;
+}
+.gd-arrow{margin-left:auto;font-size:9px;color:#55555f;transition:transform .18s}
+.guide[open] .gd-arrow{transform:rotate(90deg)}
+.gd-body{padding:0 12px 12px;animation:fade .2s ease}
+.gd-list{margin:0;padding:0;list-style:none;counter-reset:g}
+.gd-list li{
+  counter-increment:g;position:relative;
+  font-size:11px;color:var(--muted);line-height:1.65;
+  padding:0 0 9px 22px;
+}
+.gd-list li:last-child{padding-bottom:2px}
+.gd-list li::before{
+  content:counter(g);position:absolute;left:0;top:1px;
+  width:15px;height:15px;border-radius:50%;
+  background:rgba(255,255,255,.07);color:#8e8e9a;
+  font-size:9px;font-weight:600;display:grid;place-items:center;
+}
+.gd-list b{color:#d5d5de;font-weight:600}
+.gd-tip{
+  font-size:10px;color:#6b6b76;line-height:1.65;
+  border-left:2px solid rgba(6,199,85,.4);
+  padding:2px 0 2px 9px;margin:8px 0 10px;
+}
+button.ghost{
+  height:32px;font-size:11px;font-weight:550;
+  background:rgba(6,199,85,.1);color:#7fe8a8;
+  border-color:rgba(6,199,85,.28);
+}
+button.ghost:hover{background:rgba(6,199,85,.18)}
+code{background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px;font-size:10.5px;word-break:break-all}
+.steptitle{font-size:12px;font-weight:650;margin:0 0 10px}
+.steptitle .n{
+  display:inline-grid;place-items:center;width:18px;height:18px;border-radius:6px;
+  background:rgba(6,199,85,.16);color:#5fe396;font-size:10px;margin-right:7px;
+}
+.checkline{font-size:10.5px;color:var(--muted);line-height:1.7;margin:2px 0 12px}
+.checkline b{color:#d5d5de}
+.btnrow{display:flex;gap:8px;margin-bottom:4px}
+.btnrow button{flex:1}
+.copied{font-size:10px;color:#5fe396;text-align:center;height:14px;margin-bottom:8px}
+pre.codebox{
+  max-height:150px;overflow:auto;background:rgba(0,0,0,.35);
+  border:1px solid var(--line);border-radius:9px;
+  font-size:9.5px;line-height:1.5;color:#9d9dab;padding:9px 10px;margin:0 0 10px;
+  white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace;
+}
+.back{font-size:10.5px;color:#6a6a75;background:none;border:none;width:auto;padding:0;margin-bottom:14px;display:inline-block;cursor:pointer}
+.back:hover{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 5.94 2 10.78c0 4.35 3.85 7.99 9.05 8.68.35.08.83.23.95.53.11.27.07.7.03.97l-.15.92c-.05.27-.22 1.06.93.58s6.2-3.65 8.46-6.25C22.93 13.95 22 12.55 22 10.78 22 5.94 17.52 2 12 2zm-4.9 6.1h.01c.3 0 .55.24.55.54v3.1l2.14-2.94c.1-.14.26-.22.43-.22.16 0 .32.07.43.21.09.12.18.24.18.54v3.7c0 .3-.25.54-.55.54-.3 0-.55-.24-.55-.54v-3.1l-2.14 2.94c-.1.14-.26.22-.43.22-.31 0-.55-.24-.55-.54v-3.9c0-.3.25-.55.55-.55zm9.9 3.44c0 .3-.25.54-.55.54h-1.9v.98h1.9c.3 0 .55.24.55.55 0 .3-.25.54-.55.54h-2.45a.55.55 0 0 1-.55-.54V8.64c0-.3.25-.54.55-.54h2.45c.3 0 .55.24.55.54 0 .3-.25.55-.55.55h-1.9v.98h1.9c.3 0 .55.25.55.55zm-4.28-4.35c.3 0 .55.24.55.55v4.79c0 .3-.25.54-.55.54-.3 0-.55-.24-.55-.54V8.19c0-.3.25-.55.55-.55z"/></svg>
+  </div>
+
+  <h1>接入 LINE</h1>
+  <p class="sub">选一种方式，跟着步骤点下去，每一步都能当场验证。全程约 5–10 分钟。</p>
+
+  <div class="err" id="err"></div>
+  <div class="okmsg" id="okm"></div>
+
+  <!-- step 0: 选玩法 -->
+  <div class="step on" id="s-mode">
+    <div class="modecard" id="pickA">
+      <b><span class="mtag">玩法 A</span>官方账号方式 · 能回复</b>
+      <small>用你自己的 LINE 账号免费创建一个官方账号（不用买认证号、不用额外手机号）。能收发给它的私聊和所在群的消息，挂件里可以直接回复。需要 LINE 账号，无需 Android。</small>
+    </div>
+    <div class="modecard" id="pickB">
+      <b><span class="mtag">玩法 B</span>手机通知转发 · 不建账号</b>
+      <small>不建任何账号。用 Android 手机的 MacroDroid 监听 LINE 通知转发过来，能收到手机上真实的全部 LINE 消息（私聊 / 群 / 频道），但挂件里不能回复。仅支持 Android。</small>
+    </div>
+    <div class="note">两种方式共用同一个「公网中转」（部署到 Cloudflare，免费），只做一次。以后想换玩法随时回来改。</div>
+  </div>
+
+  <!-- ================= 玩法 A ================= -->
+
+  <!-- A 步骤 1：官方账号 -->
+  <div class="step" id="s-a1">
+    <button class="back" id="a1back">‹ 换一种玩法</button>
+    <div class="steptitle"><span class="n">1</span>创建免费官方账号，拿到两个凭证</div>
+    <details class="guide" open>
+      <summary><span class="gd-ico">?</span><span>怎么创建？点开看 5 步说明</span><span class="gd-arrow">▸</span></summary>
+      <div class="gd-body">
+        <ol class="gd-list">
+          <li>打开 <b>manager.line.biz</b>，用你的 <b>LINE 账号</b>或邮箱注册 <b>Business ID</b> 并登录（就是手机上那个 LINE）。</li>
+          <li>按引导填写资料创建 <b>LINE 官方账号</b>，名字随便，如 <code>我的通知</code>。免费计划即可，不用认证、不用绑卡。</li>
+          <li>在这个官方账号里找到 <b>Messaging API</b> → 点<b>开通</b>，这一步会同时创建 Messaging API 频道。</li>
+          <li>用<b>同一个账号</b>登录 <b>developers.line.biz/console</b> → 选刚建好的频道 → <b>Messaging API</b> 标签页底部 <b>Channel access token</b> 点 <b>Issue</b>，复制那串长 Token。</li>
+          <li>切到 <b>Basic settings</b> 标签页复制 <b>Channel secret</b>（32 位），下面要用。</li>
+        </ol>
+        <div class="gd-tip">注意：<b>2024-09-04 起已不能在 developers.line.biz 里直接新建频道</b>，必须先到 manager.line.biz 建官方账号再开通——老教程里的入口已经失效。官方账号不是买广告认证的那种，个人免费版就能用。</div>
+        <button class="ghost" id="a1open">用浏览器打开 manager.line.biz（建号入口）</button>
+      </div>
+    </details>
+    <label>Channel Access Token（长 Token）</label>
+    <input id="a1token" placeholder="以 eyJ… 开头的长字符串" type="password">
+    <label>Channel Secret（32 位）</label>
+    <input id="a1secret" placeholder="32 位字母数字" type="password">
+    <div class="btnrow">
+      <button class="ghost" id="a1test">验证 Token</button>
+      <button class="primary" id="a1next">下一步：部署中转</button>
+    </div>
+    <div class="note">Token 用来收消息和回复；Secret 只用于中转校验消息来自 LINE，都不会上传到任何第三方。</div>
+  </div>
+
+  <!-- A 步骤 2：部署中转 -->
+  <div class="step" id="s-a2">
+    <button class="back" id="a2back">‹ 上一步</button>
+    <div class="steptitle"><span class="n">2</span>部署公网中转（一次性，免费）</div>
+    <details class="guide" open>
+      <summary><span class="gd-ico">?</span><span>为什么需要中转？怎么部署？</span><span class="gd-arrow">▸</span></summary>
+      <div class="gd-body">
+        <ol class="gd-list">
+          <li>LINE 只支持 webhook 推送，家庭电脑没有公网地址，需要一个中转。代码就在下面，部署到 <b>Cloudflare Workers</b>（免费）。</li>
+          <li>打开 <b>dash.cloudflare.com</b> 注册/登录 → 左侧 <b>Workers &amp; Pages</b> → <b>Create Worker</b> → 名字随意（如 <code>line-hud</code>）→ <b>Deploy</b>。</li>
+          <li>点 <b>Edit code</b>，删掉示例代码，用下面的「复制中转代码」粘贴（<b>口令和 Secret 已经自动填好</b>）→ 右上 <b>Deploy</b>。</li>
+          <li>给 Worker 绑数据库：Worker 页面 → <b>Settings → Bindings</b> → 添加 <b>KV Namespace</b>，变量名填 <code>LH_KV</code>（Namespace 新建一个即可）→ Deploy 生效。</li>
+          <li>地址就是 <code>https://你的名字.你的子域.workers.dev</code>，填到下面的框里。</li>
+        </ol>
+        <div class="gd-tip">复制出来的代码里，中转口令已经替你随机生成并填进下面的输入框，两边保持一致即可，不用记。</div>
+      </div>
+    </details>
+    <button class="ghost" id="a2copy">复制中转代码（口令已填好）</button>
+    <div class="copied" id="a2copied"></div>
+    <pre class="codebox" id="a2preview">代码预览（点上面按钮复制全部）…</pre>
+    <label>Worker 地址</label>
+    <input id="a2relay" placeholder="https://line-hud.xxx.workers.dev">
+    <label>中转口令</label>
+    <input id="a2token" type="password" placeholder="复制代码时自动生成">
+    <div class="btnrow">
+      <button class="ghost" id="a2test">测试中转</button>
+      <button class="primary" id="a2next">下一步：接通 LINE</button>
+    </div>
+    <div class="note">中国大陆访问 *.workers.dev 可能不稳，可以在 Cloudflare 里给自己的域名绑 Worker 路由。</div>
+  </div>
+
+  <!-- A 步骤 3：接通 -->
+  <div class="step" id="s-a3">
+    <button class="back" id="a3back">‹ 上一步</button>
+    <div class="steptitle"><span class="n">3</span>接通 LINE，开始收消息</div>
+    <button class="ghost" id="a3hook">自动把 Webhook 指向我的中转</button>
+    <div class="checkline">然后还剩<b>一个开关</b>只能去 LINE 控制台手动打开：</div>
+    <details class="guide">
+      <summary><span class="gd-ico">!</span><span>去控制台打开「Use webhook」（30 秒）</span><span class="gd-arrow">▸</span></summary>
+      <div class="gd-body">
+        <ol class="gd-list">
+          <li>回到 <b>developers.line.biz</b> → 你的官方账号 → <b>Messaging API</b> 标签页。</li>
+          <li>找到 <b>Use webhook</b> 开关，<b>打开</b>（自动配置按钮已帮你填好 URL，点 Webhook URL 下面的 <b>Verify</b> 应显示 Success）。</li>
+          <li>建议顺手到 LINE Official Account Manager 的「回复设置」里关掉自动回复，避免默认文案干扰。</li>
+        </ol>
+        <button class="ghost" id="a3open">打开 LINE 控制台</button>
+      </div>
+    </details>
+    <button class="primary" id="a3save">保存并启用</button>
+    <div class="note">保存后：手机 LINE 给你的官方账号发条消息，挂件右下角就会冒出来。以后改配置在挂件设置 → 消息来源 → LINE。</div>
+  </div>
+
+  <!-- ================= 玩法 B ================= -->
+
+  <!-- B 步骤 1：部署中转 -->
+  <div class="step" id="s-b1">
+    <button class="back" id="b1back">‹ 换一种玩法</button>
+    <div class="steptitle"><span class="n">1</span>部署公网中转（一次性，免费）</div>
+    <details class="guide" open>
+      <summary><span class="gd-ico">?</span><span>部署步骤</span><span class="gd-arrow">▸</span></summary>
+      <div class="gd-body">
+        <ol class="gd-list">
+          <li>打开 <b>dash.cloudflare.com</b> 注册/登录 → <b>Workers &amp; Pages</b> → <b>Create Worker</b> → <b>Deploy</b>。</li>
+          <li>点 <b>Edit code</b>，删掉示例，用「复制中转代码」粘贴 → <b>Deploy</b>。</li>
+          <li>Worker 页面 → <b>Settings → Bindings</b> → 添加 <b>KV Namespace</b>：变量名 <code>LH_KV</code>，Namespace 新建即可。</li>
+          <li>地址 <code>https://你的名字.你的子域.workers.dev</code> 填到下面，点「测试中转」。</li>
+        </ol>
+        <div class="gd-tip">这个 Worker 同时也是手机转发消息的接收点。Secret 在玩法 B 里只是占位（不用验签），复制代码时已自动随机填好。</div>
+      </div>
+    </details>
+    <button class="ghost" id="b1copy">复制中转代码（口令已填好）</button>
+    <div class="copied" id="b1copied"></div>
+    <pre class="codebox" id="b1preview">代码预览（点上面按钮复制全部）…</pre>
+    <label>Worker 地址</label>
+    <input id="b1relay" placeholder="https://line-hud.xxx.workers.dev">
+    <label>中转口令</label>
+    <input id="b1token" type="password" placeholder="复制代码时自动生成">
+    <div class="btnrow">
+      <button class="ghost" id="b1test">测试中转</button>
+      <button class="primary" id="b1next">下一步：配置手机</button>
+    </div>
+  </div>
+
+  <!-- B 步骤 2：MacroDroid -->
+  <div class="step" id="s-b2">
+    <button class="back" id="b2back">‹ 上一步</button>
+    <div class="steptitle"><span class="n">2</span>手机装 MacroDroid，转发 LINE 通知</div>
+    <details class="guide" open>
+      <summary><span class="gd-ico">?</span><span>手机上的操作（一次配置，永久生效）</span><span class="gd-arrow">▸</span></summary>
+      <div class="gd-body">
+        <ol class="gd-list">
+          <li>Android 手机装 <b>MacroDroid</b>（Play 商店或官网，免费够用），首次启动允许「通知访问权限」。</li>
+          <li>添加宏 <b>+</b> → 触发器选 <b>通知 → 收到通知</b> → 应用选 <b>LINE</b>。</li>
+          <li>动作选 <b>HTTP 请求</b> → 方法 <b>POST</b> → URL 点下面的复制按钮粘贴（已带你的地址和口令）。</li>
+          <li>请求体（Body / Payload）也用下面的复制按钮粘贴，<code>{title}</code> 是发信人名、<code>{message}</code> 是内容，MacroDroid 会自动替换。</li>
+          <li>保存宏 → 用另一台手机/朋友给这台手机的 LINE 发条消息测试。</li>
+        </ol>
+        <div class="gd-tip">要求手机保持 MacroDroid 在后台运行（加白名单省电策略）。iOS 读不到通知内容，所以玩法 B 仅支持 Android。</div>
+      </div>
+    </details>
+    <button class="ghost" id="b2copyurl">复制宏的 URL</button>
+    <div class="copied" id="b2copiedurl"></div>
+    <button class="ghost" id="b2copybody">复制宏的请求体模板</button>
+    <div class="copied" id="b2copiedbody"></div>
+    <button class="primary" id="b2save">保存并启用</button>
+    <div class="note">保存后挂件立刻开始轮询中转（每 6 秒）。消息按发信人自动分成不同的会话。</div>
+  </div>
+
+  <!-- 完成 -->
+  <div class="step" id="s-done">
+    <div class="big" style="font-size:13px;font-weight:600;margin-bottom:6px">配置完成</div>
+    <p class="sub" id="doneSub">LINE 已接入，挂件开始接收消息。可以关掉这个窗口了。</p>
+    <button class="primary" id="btnDone">完成</button>
+  </div>
+</div>
+
+<!-- Worker 源码（原样嵌入，复制时动态替换口令/Secret） -->
+<script type="text/plain" id="workerCode">
+/**
+ * tg-hud LINE 中转（Cloudflare Workers 参考实现）
+ * ================================================================
+ *
+ * 为什么需要它：LINE 官方只提供 webhook 推送（POST 到一个公网 HTTPS
+ * 地址），没有 Telegram 那样的轮询接口。家里的电脑没有公网地址，
+ * 所以需要这一层公网中转：
+ *
+ *   LINE 平台 --webhook--> 本 Worker（暂存事件）
+ *   tg-hud 挂件 --每 6 秒轮询--> 本 Worker 的 /pull
+ *
+ * 事件只存在你自己的 Cloudflare KV 里，挂件取走后按时间戳水位
+ * 过滤，Worker 不做任何额外转发，代码全部在你眼前。
+ *
+ * ---------------------------------------------------------------
+ * 部署步骤（免费，约 5 分钟）：
+ *
+ * 1. 注册/登录 https://dash.cloudflare.com → 左侧 Workers & Pages
+ *    → Create Worker → 随便起个名（如 line-hud）→ Deploy
+ * 2. 点 Edit code，把本文件内容全部粘贴进去，改掉下面两个常量：
+ *      ACCESS_TOKEN = 自定义一串口令（挂件里"中转口令"填它）
+ *      SECRET       = Channel secret（LINE 控制台 Messaging API
+ *                     标签页底部可查）
+ *    再点 Deploy。
+ * 3. 给 Worker 绑 KV：Worker 页面 → Settings → Bindings →
+ *    Variables & Secrets / KV Namespace → Add binding：
+ *      类型 KV Namespace，变量名填 LH_KV，Namespace 新建一个
+ *      （如 line-hud）即可。
+ * 4. LINE Developers Console（developers.line.biz）打开你的
+ *    channel → Messaging API 标签页：
+ *      - Webhook URL 填  https://你的worker名.你的子域.workers.dev/webhook
+ *      - 打开 Use webhook 开关
+ *      - 点 Verify，显示 Success 即通
+ * 5. tg-hud 挂件 → 设置 → LINE → 配置：
+ *      中转服务地址 = https://你的worker...workers.dev
+ *      中转口令     = 第 2 步的 ACCESS_TOKEN
+ *      Channel Access Token = LINE 控制台签发的长 token
+ *
+ * 说明：也可以部署到任何能跑 JavaScript 的平台（Vercel 函数、
+ * 自己的 VPS + caddy 等），只要实现 /webhook 和 /pull 两个行为。
+ * 中国大陆直连 *.workers.dev 可能不稳定，可用自有域名绑定 Worker。
+ */
+
+// ★★★ 两个必改的常量 ★★★
+const ACCESS_TOKEN = "change-me-to-a-long-random-string"; // 挂件"中转口令"
+const SECRET = "replace-with-your-channel-secret";        // 验签用
+
+// 事件在 KV 里最多保留多久（挂件只拉启动后的新事件，这里兜底清理）
+const RETENTION_MS = 24 * 60 * 60 * 1000;
+const MAX_EVENTS = 2000;
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === "/webhook" && request.method === "POST") {
+      return handleWebhook(request, env);
+    }
+    if (url.pathname === "/notify") {
+      return handleNotify(url, request, env);
+    }
+    if (url.pathname === "/pull" && request.method === "GET") {
+      return handlePull(url, env);
+    }
+    return new Response("tg-hud LINE relay. OK\n", { status: 200 });
+  }
+};
+
+/**
+ * 手机通知转发（玩法 B，不需要 LINE 官方账号）
+ * --------------------------------------------------
+ * 用 Android 手机的自动化 App（如 MacroDroid）监听 LINE 通知，
+ * 把每条通知 POST 到这里，挂件照样能收——这样连官方账号都不用建，
+ * 而且收的是手机上真实收到的全部 LINE 消息（私聊、群、频道都有）。
+ *
+ *   POST /notify?token=你的口令
+ *   Content-Type: application/json
+ *   {"user": "发信人或群名", "text": "通知内容"}
+ *
+ * MacroDroid 里：添加宏 → 触发器「通知 → 收到通知 → 选 LINE」
+ * → 动作「HTTP 请求」→ URL 填 https://你的worker.../notify?token=口令
+ * → POST，Body 填 {"user":"{title}","text":"{message}"}（宏变量）。
+ * 也支持 GET /notify?token=口令&user=xxx&text=xxx 简化调用。
+ *
+ * 缺点：手机要常开 MacroDroid 后台、iOS 做不了（读不了通知内容）。
+ */
+async function handleNotify(url, request, env) {
+  const token = url.searchParams.get("token");
+  if (token !== ACCESS_TOKEN) {
+    return new Response("unauthorized\n", { status: 401 });
+  }
+
+  let body = {};
+  if (request.method === "POST") {
+    try { body = JSON.parse(await request.text()); } catch (e) {}
+  } else {
+    body = {
+      user: url.searchParams.get("user") || "",
+      text: url.searchParams.get("text") || ""
+    };
+  }
+
+  const user = String(body.user || "LINE 手机通知").slice(0, 60);
+  const text = String(body.text || body.message || "").slice(0, 800);
+  if (!text) return Response.json({ ok: true, skipped: "empty text" });
+
+  // 包装成 LINE webhook 事件的同构形状，挂件不用改任何逻辑
+  const now = Date.now();
+  const rid = now.toString(36) + Math.random().toString(36).slice(2, 8);
+  const event = {
+    relayTs: now,
+    timestamp: now,
+    webhookEventId: "noti-" + rid,
+    type: "message",
+    source: { type: "user", userId: "Unoti" + hashStr(user) },
+    message: { id: "n" + rid, type: "text", text },
+    hudTitle: user   // 挂件优先用它当会话名
+  };
+
+  const data = (await env.LH_KV.get("buf", "json")) || { events: [] };
+  data.events.push(event);
+  data.events = data.events
+    .filter((e) => (e.timestamp || e.relayTs || 0) > now - RETENTION_MS)
+    .slice(-MAX_EVENTS);
+  await env.LH_KV.put("buf", JSON.stringify(data));
+  return Response.json({ ok: true });
+}
+
+function hashStr(s) {
+  let h = 0;
+  const str = String(s);
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36);
+}
+
+/** LINE 平台推送的 webhook：验签 -> 追加进 KV -> 返回 200 */
+async function handleWebhook(request, env) {
+  const body = await request.text();
+
+  // 验签：x-line-signature = base64(hmac-sha256(body, Channel secret))
+  const sig = request.headers.get("x-line-signature") || "";
+  if (!(await verifySign(body, sig))) {
+    return new Response("bad signature\n", { status: 401 });
+  }
+
+  let payload = {};
+  try { payload = JSON.parse(body); } catch (e) {}
+  const events = Array.isArray(payload.events) ? payload.events : [];
+
+  if (events.length) {
+    const now = Date.now();
+    const data = (await env.LH_KV.get("buf", "json")) || { events: [] };
+    for (const ev of events) {
+      if (ev && typeof ev === "object") {
+        data.events.push(Object.assign({ relayTs: now }, ev));
+      }
+    }
+    data.events = data.events
+      .filter((e) => (e.timestamp || e.relayTs || 0) > now - RETENTION_MS)
+      .slice(-MAX_EVENTS);
+    await env.LH_KV.put("buf", JSON.stringify(data));
+  }
+  // LINE 的 Verify 按钮发的是空 events，同样返回 200
+  return new Response("ok\n", { status: 200 });
+}
+
+/** 挂件轮询：返回 timestamp > after 的事件（只读，不写 KV） */
+async function handlePull(url, env) {
+  if (url.searchParams.get("token") !== ACCESS_TOKEN) {
+    return new Response("unauthorized\n", { status: 401 });
+  }
+  const after = Number(url.searchParams.get("after") || 0);
+  const data = (await env.LH_KV.get("buf", "json")) || { events: [] };
+  const events = data.events.filter(
+    (e) => (e.timestamp || e.relayTs || 0) > after
+  );
+  return Response.json({ events });
+}
+
+async function verifySign(body, sig) {
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(SECRET),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const mac = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(body)
+    );
+    let b64 = "";
+    for (const b of new Uint8Array(mac)) b64 += String.fromCharCode(b);
+    return btoa(b64) === sig;
+  } catch (e) {
+    return false;
+  }
+}
+</script>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const steps = ["s-mode","s-a1","s-a2","s-a3","s-b1","s-b2","s-done"];
+const api = window.lineSetupApi;
+let mode = "a";
+let relayToken = "";     // 复制代码时生成的口令
+let workerSource = "";   // 嵌入的 Worker 源码
+
+function show(id){
+  steps.forEach(s => $(s).classList.toggle("on", s === id));
+  err(""); okm("");
+  requestAnimationFrame(fitWindow);
+}
+function err(msg){
+  const e = $("err");
+  if (!msg){ e.classList.remove("on"); e.textContent = ""; return; }
+  e.textContent = msg; e.classList.add("on");
+}
+function okm(msg){
+  const e = $("okm");
+  if (!msg){ e.classList.remove("on"); e.textContent = ""; return; }
+  e.textContent = msg; e.classList.add("on");
+}
+function fitWindow(){
+  if (!api || !api.resize) return;
+  const h = Math.ceil(document.querySelector(".wrap").getBoundingClientRect().height) + 54;
+  api.resize(h);
+}
+// 所有折叠面板变化都重新贴合窗口高度
+document.querySelectorAll(".guide").forEach(g => g.addEventListener("toggle", () => {
+  requestAnimationFrame(fitWindow); setTimeout(fitWindow, 220);
+}));
+document.querySelectorAll(".back").forEach(b => b.addEventListener("click", fitWindow));
+
+/* ---------- 剪贴板（file:// 下 clipboard API 可能受限，做 execCommand 兜底） ---------- */
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+function flash(id){ $(id).textContent = "已复制 ✓"; setTimeout(() => $(id).textContent = "", 2200); }
+
+/* ---------- 随机串 ---------- */
+function rand(len){
+  const c = "abcdefghjkmnpqrstuvwxyz23456789";
+  let s = ""; for (let i = 0; i < len; i++) s += c[Math.floor(Math.random() * c.length)];
+  return s;
+}
+function randHex(len){
+  const c = "0123456789abcdef";
+  let s = ""; for (let i = 0; i < len; i++) s += c[Math.floor(Math.random() * c.length)];
+  return s;
+}
+
+/* ---------- Worker 代码 ---------- */
+workerSource = $("workerCode").textContent.trim() + "\n";
+function buildWorkerCode(){
+  return workerSource
+    .replace('const ACCESS_TOKEN = "change-me-to-a-long-random-string";',
+             'const ACCESS_TOKEN = "' + relayToken + '";')
+    .replace('const SECRET = "replace-with-your-channel-secret";',
+             'const SECRET = "' + $("a1secret").value.trim() + '";');
+}
+function previewCode(){ $("a2preview").textContent = buildWorkerCode().slice(0, 700) + "\n…（完整代码点复制按钮）"; }
+
+/* ---------- 玩法选择 ---------- */
+$("pickA").addEventListener("click", () => { mode = "a"; show("s-a1"); });
+$("pickB").addEventListener("click", () => { mode = "b"; show("s-b1"); ensureToken(); });
+
+/* ---------- A1：官方账号 ---------- */
+$("a1back").addEventListener("click", () => show("s-mode"));
+$("a1open").addEventListener("click", () => { if (api) api.openExternal("https://manager.line.biz/"); });
+$("a1test").addEventListener("click", async () => {
+  const t = $("a1token").value.trim();
+  if (t.length < 40) return err("Token 看起来不完整（应是以 eyJ 开头的长字符串）");
+  err("");
+  $("a1test").disabled = true; $("a1test").textContent = "验证中…";
+  const r = api ? await api.testToken(t) : { ok: true, msg: "（预览模式）验证通过" };
+  $("a1test").disabled = false; $("a1test").textContent = "验证 Token";
+  if (r.ok){ okm(r.msg + "，点「下一步」继续"); } else { err(r.msg); }
+});
+$("a1next").addEventListener("click", () => {
+  if ($("a1token").value.trim().length < 40) return err("先填 Channel Access Token");
+  const sec = $("a1secret").value.trim();
+  if (sec.length < 20) return err("Channel Secret 看起来不完整（32 位字母数字，Basic settings 页可查）");
+  err("");
+  show("s-a2"); ensureToken(); previewCode();
+});
+
+/* ---------- 中转（A2/B1 共用逻辑） ---------- */
+function ensureToken(){
+  if (!relayToken) relayToken = randHex(24);
+  $("a2token").value = relayToken;
+  $("b1token").value = relayToken;
+}
+$("a2back").addEventListener("click", () => show("s-a1"));
+$("a2copy").addEventListener("click", async () => {
+  ensureToken();
+  const code = buildWorkerCode();
+  if (!code.includes(relayToken)) return err("复制失败：代码模板异常");
+  (await copyText(code)) ? flash("a2copied") : err("复制失败，请手动选中右侧预览复制");
+});
+$("a2test").addEventListener("click", async () => {
+  const u = $("a2relay").value.trim(), t = $("a2token").value.trim();
+  if (!/^https?:\/\//i.test(u)) return err("Worker 地址要以 https:// 开头");
+  if (!t) return err("先点「复制中转代码」，口令会自动生成");
+  err("");
+  $("a2test").disabled = true; $("a2test").textContent = "测试中…";
+  const r = api ? await api.testRelay(u, t) : { ok: true, msg: "（预览模式）中转可达" };
+  $("a2test").disabled = false; $("a2test").textContent = "测试中转";
+  if (r.ok){ okm(r.msg + "。点「下一步」接通 LINE"); } else { err(r.msg); }
+});
+$("a2next").addEventListener("click", () => {
+  if (!/^https?:\/\//i.test($("a2relay").value.trim())) return err("Worker 地址要以 https:// 开头");
+  if (!$("a2token").value.trim()) return err("中转口令还没填（复制代码时会自动生成）");
+  err(""); show("s-a3");
+});
+$("a3back").addEventListener("click", () => show("s-a2"));
+$("a3open").addEventListener("click", () => { if (api) api.openExternal("https://manager.line.biz/"); });
+$("a3hook").addEventListener("click", async () => {
+  const t = $("a1token").value.trim(), u = $("a2relay").value.trim();
+  if (!u) return err("先回到上一步填 Worker 地址");
+  err("");
+  $("a3hook").disabled = true; $("a3hook").textContent = "设置中…";
+  const r = api ? await api.setWebhook(t, u) : { ok: true, msg: "（预览模式）Webhook 已设置" };
+  $("a3hook").disabled = false; $("a3hook").textContent = "自动把 Webhook 指向我的中转";
+  if (r.ok){ okm(r.msg); } else { err(r.msg); }
+});
+$("a3save").addEventListener("click", async () => {
+  const saved = await doSave({
+    enabled: true,
+    relay: $("a2relay").value.trim(),
+    relayToken: $("a2token").value.trim(),
+    token: $("a1token").value.trim()
+  });
+  if (saved){
+    $("doneSub").textContent = "官方账号方式已启用。用手机 LINE 给你的官方账号发条消息试试，挂件马上会亮。";
+    show("s-done");
+  }
+});
+
+/* ---------- B1：中转 ---------- */
+$("b1back").addEventListener("click", () => show("s-mode"));
+$("b1copy").addEventListener("click", async () => {
+  ensureToken();
+  const code = workerSource
+    .replace('const ACCESS_TOKEN = "change-me-to-a-long-random-string";', 'const ACCESS_TOKEN = "' + relayToken + '";')
+    .replace('const SECRET = "replace-with-your-channel-secret";', 'const SECRET = "' + randHex(24) + '";');
+  (await copyText(code)) ? flash("b1copied") : err("复制失败，请手动复制文件 tools/line-worker.js 的内容");
+});
+$("b1preview").textContent = workerSource.slice(0, 700) + "\n…（完整代码点复制按钮）";
+$("b1test").addEventListener("click", async () => {
+  const u = $("b1relay").value.trim(), t = $("b1token").value.trim();
+  if (!/^https?:\/\//i.test(u)) return err("Worker 地址要以 https:// 开头");
+  if (!t) return err("先点「复制中转代码」，口令会自动生成");
+  err("");
+  $("b1test").disabled = true; $("b1test").textContent = "测试中…";
+  const r = api ? await api.testRelay(u, t) : { ok: true, msg: "（预览模式）中转可达" };
+  $("b1test").disabled = false; $("b1test").textContent = "测试中转";
+  if (r.ok){ okm(r.msg + "。点「下一步」配置手机"); } else { err(r.msg); }
+});
+$("b1next").addEventListener("click", () => {
+  if (!/^https?:\/\//i.test($("b1relay").value.trim())) return err("Worker 地址要以 https:// 开头");
+  if (!$("b1token").value.trim()) return err("中转口令还没填（复制代码时会自动生成）");
+  err(""); show("s-b2");
+});
+
+/* ---------- B2：MacroDroid ---------- */
+$("b2back").addEventListener("click", () => show("s-b1"));
+$("b2copyurl").addEventListener("click", async () => {
+  const u = $("b1relay").value.trim().replace(/\/+$/, "") + "/notify?token=" + encodeURIComponent($("b1token").value.trim());
+  (await copyText(u)) ? flash("b2copiedurl") : err("复制失败");
+});
+$("b2copybody").addEventListener("click", async () => {
+  const body = '{"user":"{title}","text":"{message}"}';
+  (await copyText(body)) ? flash("b2copiedbody") : err("复制失败");
+});
+$("b2save").addEventListener("click", async () => {
+  const saved = await doSave({
+    enabled: true,
+    relay: $("b1relay").value.trim(),
+    relayToken: $("b1token").value.trim(),
+    token: ""   // 玩法 B 没有官方账号
+  });
+  if (saved){
+    $("doneSub").textContent = "手机转发方式已启用。发一条 LINE 消息到这部手机，挂件马上会亮。";
+    show("s-done");
+  }
+});
+
+/* ---------- 保存 / 完成 ---------- */
+async function doSave(cfg){
+  if (!api){ err("（预览模式）不会真正保存，请在桌面应用里使用"); return false; }
+  $("btnDone") && ($("btnDone").textContent = "完成");
+  const ok = await api.save(cfg);
+  if (!ok) err("保存失败，请重试");
+  return !!ok;
+}
+$("btnDone").addEventListener("click", () => { if (api) api.close(); });
+
+/* ---------- 初始化：回填已有配置 ---------- */
+(async () => {
+  $("a2preview").textContent = workerSource.slice(0, 700) + "\n…（完整代码点复制按钮）";
+  if (api){
+    try {
+      const c = await api.getCfg();
+      if (c){
+        if (c.relay){ $("a2relay").value = c.relay; $("b1relay").value = c.relay; }
+        if (c.relayToken){ relayToken = c.relayToken; $("a2token").value = c.relayToken; $("b1token").value = c.relayToken; }
+        if (c.token) $("a1token").value = c.token;
+      }
+    } catch (e) {}
+    setTimeout(fitWindow, 80);
+  } else {
+    err("这是浏览器预览：请在挂件 → 设置 → 消息来源 → LINE 的「配置」按钮里打开本向导");
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>连接 Telegram</title>
+<style>
+:root{
+  --fg:#e9e9ee;--muted:#8b8b96;--faint:#5c5c66;
+  --line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.16);
+  --tg:#2aabee;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  background:#0c0c10;color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:26px;overflow-y:auto;
+  scrollbar-width:none;
+}
+body::-webkit-scrollbar{width:0;height:0}
+.wrap{width:100%;max-width:404px}
+.logo{
+  width:44px;height:44px;border-radius:14px;margin-bottom:16px;
+  background:linear-gradient(145deg,#37bdf5,#168ac9);
+  display:grid;place-items:center;
+  box-shadow:0 10px 30px -8px rgba(42,171,238,.6);
+}
+.logo svg{width:24px;height:24px;fill:#fff}
+h1{font-size:17px;font-weight:650;margin:0 0 6px;letter-spacing:-.01em}
+.sub{font-size:11.5px;color:var(--muted);line-height:1.65;margin:0 0 20px;text-wrap:pretty}
+.step{display:none}
+.step.on{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+label{display:block;font-size:10.5px;color:var(--faint);margin:0 0 6px;letter-spacing:.02em}
+input{
+  width:100%;height:38px;border-radius:10px;border:1px solid var(--line);
+  background:rgba(255,255,255,.045);color:var(--fg);font-size:13px;
+  padding:0 11px;font-family:inherit;outline:none;transition:.16s;margin-bottom:12px;
+}
+input:focus{border-color:rgba(42,171,238,.55);background:rgba(42,171,238,.06)}
+input::placeholder{color:#4a4a54}
+button{
+  width:100%;height:38px;border-radius:10px;border:1px solid var(--line);
+  background:rgba(255,255,255,.06);color:var(--fg);font-size:12.5px;
+  font-weight:600;cursor:pointer;font-family:inherit;transition:.16s;
+}
+button:hover{background:rgba(255,255,255,.12)}
+button.primary{background:var(--tg);color:#04121a;border-color:var(--tg)}
+button.primary:hover{background:#4dbdf5}
+button:disabled{opacity:.45;cursor:default}
+.link{
+  display:inline-block;font-size:10.5px;color:var(--tg);text-decoration:none;
+  margin-bottom:14px;
+}
+.link:hover{text-decoration:underline}
+.err{
+  font-size:11px;color:#fca5a5;background:rgba(248,113,113,.1);
+  border:1px solid rgba(248,113,113,.2);border-radius:8px;
+  padding:8px 10px;line-height:1.5;margin-bottom:12px;display:none;
+}
+.err.on{display:block}
+.note{
+  font-size:10px;color:#4f4f59;line-height:1.6;margin-top:14px;
+  border-top:1px solid rgba(255,255,255,.05);padding-top:12px;
+}
+.adv{border-top:1px solid rgba(255,255,255,.05);padding-top:10px;margin-bottom:12px}
+.adv summary{
+  font-size:10.5px;color:#6a6a75;cursor:pointer;list-style:none;
+  margin-bottom:10px;user-select:none;
+}
+.adv summary::-webkit-details-marker{display:none}
+.adv summary::before{content:"▸ ";font-size:9px}
+.adv[open] summary::before{content:"▾ "}
+.adv summary:hover{color:var(--fg)}
+
+/* ---------- 获取 API 的步骤说明 ---------- */
+.guide{
+  border:1px solid var(--line);border-radius:11px;
+  background:rgba(255,255,255,.028);
+  margin-bottom:16px;overflow:hidden;transition:border-color .16s;
+}
+.guide[open]{border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.04)}
+.guide summary{
+  list-style:none;cursor:pointer;user-select:none;
+  padding:10px 12px;font-size:11.5px;color:#9a9aa6;
+  display:flex;align-items:center;gap:7px;
+}
+.guide summary::-webkit-details-marker{display:none}
+.guide summary:hover{color:var(--fg)}
+.gd-ico{
+  width:15px;height:15px;border-radius:50%;flex:0 0 auto;
+  background:rgba(42,171,238,.16);color:#6fc9f5;
+  display:grid;place-items:center;font-size:9.5px;font-weight:700;
+}
+.gd-arrow{margin-left:auto;font-size:9px;color:#55555f;transition:transform .18s}
+.guide[open] .gd-arrow{transform:rotate(90deg)}
+.gd-body{padding:0 12px 12px;animation:fade .2s ease}
+.gd-list{margin:0;padding:0;list-style:none;counter-reset:g}
+.gd-list li{
+  counter-increment:g;position:relative;
+  font-size:11px;color:var(--muted);line-height:1.65;
+  padding:0 0 9px 22px;
+}
+.gd-list li:last-child{padding-bottom:2px}
+.gd-list li::before{
+  content:counter(g);position:absolute;left:0;top:1px;
+  width:15px;height:15px;border-radius:50%;
+  background:rgba(255,255,255,.07);color:#8e8e9a;
+  font-size:9px;font-weight:600;display:grid;place-items:center;
+}
+.gd-list b{color:#d5d5de;font-weight:600}
+.gd-tip{
+  font-size:10px;color:#6b6b76;line-height:1.65;
+  border-left:2px solid rgba(42,171,238,.35);
+  padding:2px 0 2px 9px;margin:8px 0 10px;
+}
+button.ghost{
+  height:32px;font-size:11px;font-weight:550;
+  background:rgba(42,171,238,.1);color:#7fd0f7;
+  border-color:rgba(42,171,238,.25);
+}
+button.ghost:hover{background:rgba(42,171,238,.18)}
+.spin{
+  width:16px;height:16px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;
+  animation:rot .7s linear infinite;margin:18px auto;
+}
+@keyframes rot{to{transform:rotate(360deg)}}
+.center{text-align:center}
+.big{font-size:13px;font-weight:600;margin-bottom:6px}
+.hintline{font-size:11px;color:var(--muted);line-height:1.6}
+code{background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px;font-size:10.5px}
+.segbtn{
+  flex:1;height:30px;border-radius:8px;border:1px solid var(--line);
+  background:rgba(255,255,255,.04);color:var(--muted);font-size:11px;
+  font-family:inherit;cursor:pointer;transition:.14s;padding:0;
+}
+.segbtn.on{background:rgba(42,171,238,.16);color:#9ddcf7;border-color:rgba(42,171,238,.4);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
+  </div>
+
+  <h1>连接你的 Telegram</h1>
+  <p class="sub">连接后，这个挂件会在屏幕边缘显示你的新消息。所有数据只留在本机。</p>
+
+  <div class="err" id="err"></div>
+
+  <!-- step: api -->
+  <div class="step on" id="s-api">
+    <details class="guide" id="guide">
+      <summary>
+        <span class="gd-ico">?</span>
+        <span>不知道怎么获取？点开看 5 步说明</span>
+        <span class="gd-arrow">▸</span>
+      </summary>
+      <div class="gd-body">
+        <ol class="gd-list">
+          <li>打开 <b>my.telegram.org</b>，填你的手机号登录。<br>验证码不发短信，会发到你 <b>Telegram App</b> 里。</li>
+          <li>登录后点 <b>API development tools</b>。</li>
+          <li>表单随便填：<b>App title</b> 写 <code>hud</code>，<b>Short name</b> 写 <code>hud</code>，<b>Platform</b> 选 <b>Desktop</b>，网址和描述留空。</li>
+          <li>点 <b>Create application</b> 提交。</li>
+          <li>页面上会出现 <b>App api_id</b>（一串数字）和 <b>App api_hash</b>（32 位字母数字），照抄到下面两个框里。</li>
+        </ol>
+        <div class="gd-tip">网站打不开是网络问题，先开代理再访问。一个手机号只能有一个应用，如果你以前建过，页面会直接显示原来那组，不用重新建。</div>
+        <button class="ghost" id="btnOpenSite">用浏览器打开 my.telegram.org</button>
+      </div>
+    </details>
+
+    <label>API ID</label>
+    <input id="apiId" inputmode="numeric" placeholder="例如 12345678">
+    <label>API Hash</label>
+    <input id="apiHash" placeholder="32 位字母数字，例如 a1b2c3d4…">
+
+    <details class="adv">
+      <summary>网络设置（连不上时再填）</summary>
+      <label>代理类型</label>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button type="button" class="segbtn on" data-t="socks5">SOCKS5</button>
+        <button type="button" class="segbtn" data-t="mtp">MTProxy</button>
+      </div>
+      <label>地址</label>
+      <input id="proxyHost" placeholder="127.0.0.1（留空表示直连）">
+      <label>端口</label>
+      <input id="proxyPort" placeholder="1080" inputmode="numeric">
+      <div id="secretRow" style="display:none">
+        <label>Secret（MTProxy 必填）</label>
+        <input id="proxySecret" placeholder="32 位字母数字">
+      </div>
+    </details>
+
+    <button class="primary" id="btnApi">继续</button>
+    <div class="note">填写你账号的 API 凭证，等同于这台电脑登录了你的 Telegram。凭证与登录态只保存在本机配置文件中，不会上传到任何服务器。</div>
+  </div>
+
+  <!-- step: phone -->
+  <div class="step" id="s-phone">
+    <label>手机号（含国家码）</label>
+    <input id="phone" placeholder="+86 138 0000 0000">
+    <button class="primary" id="btnPhone">发送验证码</button>
+    <div class="note">验证码会发到你 Telegram 的任意一台已登录设备上。</div>
+  </div>
+
+  <!-- step: code -->
+  <div class="step" id="s-code">
+    <label>验证码</label>
+    <input id="code" inputmode="numeric" placeholder="5 位数字" maxlength="6">
+    <button class="primary" id="btnCode">登录</button>
+    <div class="note">如果没收到，退回去重新发送；或检查是否开了两步验证。</div>
+  </div>
+
+  <!-- step: password -->
+  <div class="step" id="s-pwd">
+    <label>两步验证密码</label>
+    <input id="pwd" type="password" placeholder="你的云密码">
+    <button class="primary" id="btnPwd">验证</button>
+    <div class="note">这个账号开启了两步验证，需要额外输入一次密码。</div>
+  </div>
+
+  <!-- step: waiting -->
+  <div class="step" id="s-wait">
+    <div class="spin"></div>
+    <div class="center hintline" id="waitText">正在连接…</div>
+  </div>
+
+  <!-- step: done -->
+  <div class="step" id="s-done">
+    <div class="big">连接成功</div>
+    <p class="sub" id="doneSub">挂件已经就绪，可以关掉这个窗口了。</p>
+    <button class="primary" id="btnDone">完成</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const steps = ["s-api","s-phone","s-code","s-pwd","s-wait","s-done"];
+let kind = "api";
+
+function show(id){
+  steps.forEach(s => $(s).classList.toggle("on", s === id));
+  requestAnimationFrame(fitWindow);
+}
+function err(msg){
+  const e = $("err");
+  if (!msg){ e.classList.remove("on"); e.textContent = ""; return; }
+  e.textContent = msg;
+  e.classList.add("on");
+}
+function busy(on, text){
+  if (on){ $("waitText").textContent = text || "处理中…"; show("s-wait"); }
+}
+
+const api = window.loginApi;
+
+$("btnOpenSite").addEventListener("click", () => {
+  if (api) api.openExternal("https://my.telegram.org/apps");
+});
+
+// 展开说明时把窗口一起撑高，收起时收回
+const guide = $("guide");
+function fitWindow(){
+  if (!api || !api.resize) return;
+  const h = Math.ceil(document.querySelector(".wrap").getBoundingClientRect().height) + 54;
+  api.resize(h);
+}
+guide.addEventListener("toggle", () => {
+  requestAnimationFrame(fitWindow);
+  setTimeout(fitWindow, 220);
+});
+
+$("btnApi").addEventListener("click", () => {
+  const id = $("apiId").value.trim();
+  const hash = $("apiHash").value.trim();
+  if (!/^\d+$/.test(id)) return err("API ID 应该是一串数字");
+  if (hash.length < 20) return err("API Hash 看起来不完整");
+  err("");
+
+  const type = document.querySelector(".segbtn.on").dataset.t;
+  const host = $("proxyHost").value.trim();
+  const port = Number($("proxyPort").value.trim()) || 0;
+  const secret = $("proxySecret").value.trim();
+  let proxy;
+  if (host) {
+    proxy = { enabled: true, type, host, port: port || (type === "mtp" ? 443 : 1080) };
+    if (type === "mtp") {
+      if (secret.length < 16) return err("MTProxy 的 Secret 看起来不完整（32 位字母数字）");
+      proxy.secret = secret;
+    }
+  } else {
+    proxy = { enabled: false, type, host: "", port: 0, secret: "" };
+  }
+
+  busy(true, "正在连接 Telegram…");
+  api.start({ apiId: Number(id), apiHash: hash, proxy });
+});
+
+// 代理类型切换
+document.querySelectorAll(".segbtn").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".segbtn").forEach(x => x.classList.remove("on"));
+  b.classList.add("on");
+  $("secretRow").style.display = b.dataset.t === "mtp" ? "" : "none";
+  $("proxyPort").placeholder = b.dataset.t === "mtp" ? "443" : "1080";
+}));
+
+$("btnPhone").addEventListener("click", () => {
+  const v = $("phone").value.trim();
+  if (v.replace(/\D/g,"").length < 7) return err("手机号看起来不对");
+  err("");
+  busy(true, "正在发送验证码…");
+  api.submit("phone", v);
+});
+
+$("btnCode").addEventListener("click", () => {
+  const v = $("code").value.trim();
+  if (v.length < 3) return err("请填完整验证码");
+  err("");
+  busy(true, "正在登录…");
+  api.submit("code", v);
+});
+
+$("btnPwd").addEventListener("click", () => {
+  const v = $("pwd").value;
+  if (!v) return err("请输入两步验证密码");
+  err("");
+  busy(true, "正在验证…");
+  api.submit("password", v);
+});
+
+$("btnDone").addEventListener("click", () => api.close());
+
+["phone","code","pwd"].forEach(id => {
+  $(id).addEventListener("keydown", e => {
+    if (e.key === "Enter") $(id === "phone" ? "btnPhone" : id === "code" ? "btnCode" : "btnPwd").click();
+  });
+});
+
+if (api){
+  api.onNeed((k) => {
+    kind = k;
+    err("");
+    if (k === "phone"){ show("s-phone"); $("phone").focus(); }
+    if (k === "code"){ show("s-code"); $("code").focus(); }
+    if (k === "password"){ show("s-pwd"); $("pwd").focus(); }
+  });
+  api.onError((msg) => {
+    err(msg);
+    if (kind === "code") show("s-code");
+    else if (kind === "password") show("s-pwd");
+    else if (kind === "phone") show("s-phone");
+    else show("s-api");
+  });
+  api.onDone((name) => {
+    $("doneSub").textContent = name ? ("已登录 " + name + "，挂件已经就绪。") : "挂件已经就绪，可以关掉这个窗口了。";
+    show("s-done");
+  });
+
+  // 显式状态机：窗口打开时查询当前登录进度，中断后从上一步继续而不是从头来
+  if (api.getAuthState) {
+    api.getAuthState().then((s) => {
+      if (!s || !s.step) return;
+      if (s.step === "connecting") busy(true, "正在连接 Telegram…");
+      else if (s.step === "wait-phone") { kind = "phone"; show("s-phone"); setTimeout(() => $("phone").focus(), 60); }
+      else if (s.step === "wait-code") { kind = "code"; show("s-code"); setTimeout(() => $("code").focus(), 60); }
+      else if (s.step === "wait-password") { kind = "password"; show("s-pwd"); setTimeout(() => $("pwd").focus(), 60); }
+      else if (s.step === "verifying" || s.step === "saving") busy(true, "正在验证…");
+      else if (s.step === "fail" && s.error) err(s.error);
+    }).catch(() => {});
+  }
+  if (api.onState) {
+    api.onState((s) => {
+      if (!s) return;
+      if (s.step === "wait-code" && kind !== "code") { kind = "code"; err(""); show("s-code"); }
+      if (s.step === "wait-password" && kind !== "password") { kind = "password"; err(""); show("s-pwd"); }
+    });
+  }
+
+  // 打开时按实际内容高度贴合窗口，避免底部留白
+  if (api.resize) setTimeout(fitWindow, 80);
+} else {
+  err("请在桌面应用中运行这个向导");
+}
+</script>
+</body>
+</html>

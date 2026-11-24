@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tg-hub 设置中心</title>
+<style>
+  :root{
+    --bg:#0b0f18; --card:#151c2b; --card2:#1b2436; --line:#2a3550;
+    --txt:#e8edf7; --sub:#93a1bd; --accent:#5b8cff; --accent2:#3f6fe0;
+    --tg:#2aabee; --sx:#34d399; --ln:#06c755;
+    --ok:#37d67a; --warn:#ffb020; --err:#ff5c7c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font:13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--txt);
+    background:radial-gradient(1200px 700px at 15% -10%,#1a2947 0%,transparent 55%),
+               radial-gradient(900px 600px at 110% 110%,#10283a 0%,transparent 50%),
+               var(--bg);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  /* 标题栏 */
+  .titlebar{
+    height:52px;flex:none;display:flex;align-items:center;gap:12px;
+    padding:0 18px;background:rgba(12,17,28,.72);border-bottom:1px solid var(--line);
+    -webkit-app-region:drag;user-select:none;
+  }
+  .logo{width:26px;height:26px;border-radius:8px;
+    background:linear-gradient(135deg,var(--accent),#7a5bff);
+    display:grid;place-items:center;font-weight:800;font-size:13px;color:#fff;
+    box-shadow:0 4px 14px rgba(91,140,255,.4)}
+  .brand{font-weight:700;font-size:15px;letter-spacing:.3px}
+  .brand small{font-weight:400;color:var(--sub);font-size:11px;margin-left:8px}
+  .spacer{flex:1}
+  .conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--sub);
+    padding:5px 11px;border:1px solid var(--line);border-radius:20px;background:#111827}
+  .conn .dot{width:8px;height:8px;border-radius:50%;background:#64748b}
+  .conn.on .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .conn.err .dot{background:var(--err)}
+  .winbtn{-webkit-app-region:no-drag;width:30px;height:30px;border:0;border-radius:8px;
+    background:transparent;color:var(--sub);font-size:16px;cursor:pointer}
+  .winbtn:hover{background:#223049;color:#fff}
+
+  /* 主体 */
+  .body{flex:1;display:flex;min-height:0}
+  .nav{width:186px;flex:none;padding:14px 10px;border-right:1px solid var(--line);
+    background:rgba(10,14,23,.5);overflow:auto}
+  .nav .group{font-size:10px;letter-spacing:1.4px;color:#5d6b88;text-transform:uppercase;
+    padding:12px 10px 6px}
+  .tab{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;margin:2px 0;
+    border:0;border-radius:10px;background:transparent;color:var(--sub);
+    font:inherit;font-size:13px;cursor:pointer;text-align:left}
+  .tab:hover{background:#1a2438;color:#fff}
+  .tab.active{background:linear-gradient(90deg,rgba(91,140,255,.22),rgba(91,140,255,.05));
+    color:#fff;box-shadow:inset 2px 0 0 var(--accent)}
+  .tab .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
+    font-size:11px;font-weight:800;color:#fff;flex:none}
+  .tab .badge{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#3a4663}
+  .tab .badge.on{background:var(--ok)}
+  .tab .badge.err{background:var(--err)}
+  .tab .badge.warn{background:var(--warn)}
+
+  .content{flex:1;overflow:auto;padding:22px 26px 40px}
+  .page{display:none;max-width:720px}
+  .page.active{display:block}
+  .page h2{margin:0 0 4px;font-size:19px;letter-spacing:.3px}
+  .page .desc{color:var(--sub);margin:0 0 20px;font-size:12.5px;line-height:1.7}
+
+  .card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
+    border-radius:14px;padding:18px 20px;margin-bottom:16px;
+    box-shadow:0 8px 30px rgba(0,0,0,.18)}
+  .card h3{margin:0 0 14px;font-size:14px;display:flex;align-items:center;gap:9px}
+  .card h3 .pill{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;color:#06121a}
+  .card h3 .status{margin-left:auto;font-size:11px;font-weight:500;color:var(--sub);
+    padding:3px 9px;border:1px solid var(--line);border-radius:20px}
+  .card h3 .status.on{color:var(--ok);border-color:rgba(55,214,122,.4)}
+  .card h3 .status.err{color:var(--err);border-color:rgba(255,92,124,.4)}
+
+  .field{margin-bottom:13px}
+  .field:last-child{margin-bottom:0}
+  .field label{display:block;font-size:11.5px;color:var(--sub);margin-bottom:5px}
+  .field .hint{float:right;color:#5d6b88;font-size:10.5px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  input[type=text],input[type=password],input[type=number],select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    background:#0e1421;color:var(--txt);font:inherit;font-size:12.5px;outline:none;transition:.15s}
+  input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,140,255,.14)}
+  input::placeholder{color:#4b5875}
+  .switch{display:flex;align-items:center;gap:9px;color:var(--sub);font-size:12px;cursor:pointer}
+  .switch input{accent-color:var(--accent);width:15px;height:15px}
+
+  .btn{padding:9px 15px;border:1px solid var(--line);border-radius:9px;background:#1c2740;
+    color:var(--txt);font:inherit;font-size:12.5px;cursor:pointer;transition:.15s;font-weight:600}
+  .btn:hover{background:#25335a;border-color:#3a4d78}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:#fff}
+  .btn.primary:hover{filter:brightness(1.1)}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:6px 11px;font-size:11.5px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px}
+
+  .note{font-size:11.5px;color:var(--sub);background:rgba(91,140,255,.07);
+    border:1px solid rgba(91,140,255,.2);border-radius:9px;padding:10px 12px;line-height:1.65}
+  .note.warn{background:rgba(255,176,32,.07);border-color:rgba(255,176,32,.25);color:#e8c98a}
+  .note a{color:var(--accent);cursor:pointer;text-decoration:underline}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:#0a0f1a;padding:1px 5px;border-radius:4px;color:#9fc0ff}
+
+  /* 登录状态机 */
+  .auth{background:#0e1421;border:1px solid var(--line);border-radius:11px;padding:14px;margin-top:4px}
+  .auth .step{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub);margin-bottom:10px}
+  .auth .step b{color:var(--txt)}
+  .auth .line{display:flex;gap:8px}
+  .auth input{flex:1}
+
+  /* toast */
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:#1b2740;border:1px solid var(--line);border-radius:10px;padding:10px 18px;
+    font-size:12.5px;box-shadow:0 12px 40px rgba(0,0,0,.5);opacity:0;pointer-events:none;
+    transition:.25s;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{border-color:rgba(55,214,122,.5)}
+  .toast.err{border-color:rgba(255,92,124,.5)}
+
+  /* 保存条 */
+  .savebar{position:sticky;bottom:-40px;margin:26px -26px -40px;padding:14px 26px;
+    background:linear-gradient(0deg,rgba(11,15,24,.98),rgba(11,15,24,.86));
+    border-top:1px solid var(--line);display:flex;align-items:center;gap:12px;z-index:5}
+  .savebar .dirty{color:var(--warn);font-size:11.5px}
+  .savebar .clean{color:var(--sub);font-size:11.5px}
+</style>
+</head>
+<body>
+<div class="titlebar">
+  <div class="logo">H</div>
+  <div class="brand">tg-hub 设置中心 <small>集中配置 · 多端同步</small></div>
+  <div class="spacer"></div>
+  <div class="conn" id="conn"><span class="dot"></span><span id="connText">未连接</span></div>
+  <button class="winbtn" id="btnClose" title="关闭">✕</button>
+</div>
+
+<div class="body">
+  <div class="nav">
+    <div class="group">系统</div>
+    <button class="tab active" data-page="conn"><span class="ic" style="background:#334155">⌁</span>连接设置<span class="badge" id="badgeConn"></span></button>
+    <div class="group">消息来源</div>
+    <button class="tab" data-page="tg"><span class="ic" style="background:var(--tg)">TG</span>Telegram<span class="badge" id="badgeTg"></span></button>
+    <button class="tab" data-page="sx"><span class="ic" style="background:var(--sx)">SX</span>SafeXTM<span class="badge" id="badgeSx"></span></button>
+    <button class="tab" data-page="line"><span class="ic" style="background:var(--ln)">LN</span>LINE<span class="badge" id="badgeLine"></span></button>
+    <div class="group">操作</div>
+    <button class="tab" data-page="ops"><span class="ic" style="background:#7a5bff">⚙</span>维护工具</button>
+  </div>
+
+  <div class="content">
+    <!-- 连接 -->
+    <div class="page active" id="page-conn">
+      <h2>连接设置</h2>
+      <p class="desc">设置窗先连上 Hub，才能读取和修改各平台凭证。这里填的地址与口令会和悬浮窗共用，改一次两边都生效。</p>
+      <div class="card">
+        <h3>Hub 连接</h3>
+        <div class="field">
+          <label>Hub 地址 <span class="hint">本机默认 http://127.0.0.1:8787</span></label>
+          <input type="text" id="hubUrl" placeholder="http://127.0.0.1:8787 或 https://xxx.trycloudflare.com">
+        </div>
+        <div class="field">
+          <label>连接口令（hubToken） <span class="hint">所有端必须一致</span></label>
+          <input type="password" id="hubToken" placeholder="与 Hub config.json 的 hubToken 相同">
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btnTest">测试连接</button>
+          <span class="hint" id="connMsg" style="color:var(--sub)"></span>
+        </div>
+      </div>
+      <div class="note">口令同时是 Hub 的访问密钥。修改口令后，务必先点下方「保存全部」，再把新口令同步给手机端和悬浮窗，否则其它端会掉线。</div>
+    </div>
+
+    <!-- Telegram -->
+    <div class="page" id="page-tg">
+      <h2>Telegram</h2>
+      <p class="desc">凭证来自 <a id="tgLink">my.telegram.org/apps</a>。首次登录一次，session 自动存在 Hub，之后免登录。</p>
+      <div class="card">
+        <h3><span class="pill" style="background:var(--tg)">TG</span>应用凭证 <span class="status" id="stTg">未配置</span></h3>
+        <div class="row2">
+          <div class="field"><label>apiId（数字）</label><input type="number" id="tgApiId" placeholder="123456"></div>
+          <div class="field"><label>apiHash</label><input type="password" id="tgApiHash" placeholder="一串 32 位字符"></div>
+        </div>
+        <div class="field">
+          <label class="switch"><input type="checkbox" id="tgProxyOn"> 使用代理（国内网络连不上时开启）</label>
+        </div>
+        <div class="row3" id="tgProxyBox" style="display:none">
+          <div class="field"><label>类型</label><select id="tgProxyType"><option value="socks5">socks5</option><option value="http">http</option></select></div>
+          <div class="field"><label>主机</label><input type="text" id="tgProxyHost" placeholder="127.0.0.1"></div>
+          <div class="field"><label>端口</label><input type="number" id="tgProxyPort" placeholder="1080"></div>
+        </div>
+        <div class="field" id="tgSecretBox" style="display:none"><label>代理密钥（可选）</label><input type="text" id="tgProxySecret" placeholder="secret"></div>
+      </div>
+      <div class="card">
+        <h3>登录状态</h3>
+        <div class="auth">
+          <div class="step">当前步骤：<b id="authStep">未连接 Hub</b> <span id="authErr" style="color:var(--err)"></span></div>
+          <div class="line">
+            <input type="text" id="authInput" placeholder="先连接 Hub 并填好凭证">
+            <button class="btn primary sm" id="btnAuthSubmit">提交</button>
+            <button class="btn sm" id="btnAuthReconnect">重新登录</button>
+          </div>
+        </div>
+        <div class="note" style="margin-top:12px">按提示依次提交：手机号（带国家码，如 +8613800138000）→ 验证码 → 如有两步密码再提交密码。完成后自动保存登录状态。</div>
+      </div>
+    </div>
+
+    <!-- SafeXTM -->
+    <div class="page" id="page-sx">
+      <h2>SafeXTM</h2>
+      <p class="desc">在 SafeXTM 里找机器人申请 Bot Token，粘贴到下方。留空则不启用该来源。</p>
+      <div class="card">
+        <h3><span class="pill" style="background:var(--sx)">SX</span>Bot Token <span class="status" id="stSx">未配置</span></h3>
+        <div class="field">
+          <label>Bot Token</label>
+          <input type="password" id="sxToken" placeholder="123456789:AAxxxxxxxxxxxxxxxx">
+        </div>
+        <div class="note warn">SafeXTM 用 getUpdates 拉消息，同一机器人只能有一个 Hub 在采集。请确保没有其它程序同时用这个 Token。</div>
+      </div>
+    </div>
+
+    <!-- LINE -->
+    <div class="page" id="page-line">
+      <h2>LINE</h2>
+      <p class="desc">两种玩法可同时用：官方账号走 Token + Secret；个人账号用手机通知转发，自定一个转发口令。</p>
+      <div class="card">
+        <h3><span class="pill" style="background:var(--ln)">LN</span>玩法 A · 官方 Messaging API <span class="status" id="stLine">未配置</span></h3>
+        <div class="row2">
+          <div class="field"><label>Channel Access Token</label><input type="password" id="lineToken" placeholder="官方账号的 Token"></div>
+          <div class="field"><label>Channel Secret</label><input type="password" id="lineSecret" placeholder="用于验证 webhook"></div>
+        </div>
+        <div class="note" style="margin-top:4px">如何创建官方账号并拿到这两个值：<a id="lineGuide">打开 LINE 配置向导</a></div>
+      </div>
+      <div class="card">
+        <h3>玩法 B · 手机通知转发</h3>
+        <div class="field">
+          <label>转发口令（relayToken） <span class="hint">自己定，手机端转发时带上</span></label>
+          <input type="text" id="lineRelay" placeholder="一串只有你知道的口令">
+        </div>
+        <div class="note">没有机器人、只有自己账号时用这个：手机收到 LINE 通知后转发给 Hub。具体设置见刚才的向导「玩法 B」部分。</div>
+      </div>
+    </div>
+
+    <!-- 维护 -->
+    <div class="page" id="page-ops">
+      <h2>维护工具</h2>
+      <p class="desc">配置保存后点「重启采集器」让新凭证立即生效；平时无需操作。</p>
+      <div class="card">
+        <h3>运行状态</h3>
+        <div class="actions">
+          <button class="btn" id="btnRestart">重启采集器</button>
+          <button class="btn" id="btnRefresh">刷新状态</button>
+          <button class="btn ghost" id="btnPwa">打开手机端页面</button>
+        </div>
+        <div class="note" style="margin-top:14px" id="statusBox">点「刷新状态」查看各来源连接情况和消息统计。</div>
+      </div>
+      <div class="card">
+        <h3>关于</h3>
+        <div class="note">这是 tg-hub 的独立设置窗，与悬浮通知窗共用同一份本地配置。所有消息和已读状态都存放在 Hub，三端实时同步。<br>关闭此窗口不影响悬浮窗继续运行。</div>
+      </div>
+    </div>
+
+    <div class="savebar">
+      <button class="btn primary" id="btnSave">保存全部</button>
+      <span id="saveState" class="clean">修改凭证后点这里写入 Hub</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (s)=>document.querySelector(s);
+  const api = (window.settingsApi && window.settingsApi.api) || (()=>Promise.resolve({ok:false,data:{error:"设置接口未就绪"}}));
+  const S = { cfg:{hub:"",token:""}, full:null, state:null, auth:null, dirty:false, authTimer:null };
+
+  function toast(msg, kind){
+    const t=$("#toast"); t.textContent=msg; t.className="toast show "+(kind||"");
+    clearTimeout(t._t); t._t=setTimeout(()=>t.className="toast",2600);
+  }
+  function setConn(s,text){ const c=$("#conn"); c.className="conn "+(s||""); $("#connText").textContent=text||({on:"已连接",err:"连接失败","":"未连接"}[s]||s); }
+  function markDirty(){ S.dirty=true; $("#saveState").className="dirty"; $("#saveState").textContent="有未保存的修改"; }
+  function markClean(){ S.dirty=false; $("#saveState").className="clean"; $("#saveState").textContent="已保存"; }
+
+  // 导航
+  document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active"); $("#page-"+t.dataset.page).classList.add("active");
+  });
+
+  // 连接
+  function fillConn(){
+    $("#hubUrl").value = S.cfg.hub || "http://127.0.0.1:8787";
+    $("#hubToken").value = S.cfg.token || "";
+  }
+  async function testConn(silent){
+    const hub = $("#hubUrl").value.trim().replace(/\/+$/,"");
+    const token = $("#hubToken").value.trim();
+    if(!hub){ toast("请填 Hub 地址","err"); return false; }
+    // 先存本地，代理请求要用
+    S.cfg = { hub, token };
+    window.settingsApi.saveConfig(S.cfg);
+    setConn("","连接中…");
+    const r = await api("GET","/api/ping");
+    if(r.ok && r.data && r.data.ok){
+      setConn("on","已连接");
+      $("#connMsg").textContent = "连接正常" + (r.data.rev!==undefined?(" · 状态版本 "+r.data.rev):"");
+      await loadAll();
+      if(!silent) toast("连接成功","ok");
+      return true;
+    }
+    setConn("err","连接失败");
+    $("#connMsg").textContent = "连不上：" +(r.data&&r.data.error||"请检查地址和口令");
+    if(!silent) toast("连接失败，请检查地址和口令","err");
+    return false;
+  }
+  $("#btnTest").onclick=()=>testConn();
+
+  // 读取全部配置和状态
+  async function loadAll(){
+    const full = await api("GET","/api/config/full");
+    if(full.ok && full.data && !full.data.error){ S.full=full.data; fillForms(); }
+    else $("#connMsg").textContent="注意：无法读取完整配置（需要连接口令正确）";
+    await refreshState();
+    await refreshAuth();
+  }
+  function fillForms(){
+    const c=S.full;
+    $("#tgApiId").value    = c.telegram && c.telegram.apiId || "";
+    $("#tgApiHash").value  = c.telegram && c.telegram.apiHash || "";
+    const p = c.telegram && c.telegram.proxy || {};
+    $("#tgProxyOn").checked = !!p.enabled;
+    $("#tgProxyType").value = p.type || "socks5";
+    $("#tgProxyHost").value = p.host || "";
+    $("#tgProxyPort").value = p.port || "";
+    $("#tgProxySecret").value = p.secret || "";
+    toggleProxy();
+    $("#sxToken").value   = c.safextm && c.safextm.token || "";
+    $("#lineToken").value = c.line && c.line.token || "";
+    $("#lineSecret").value= c.line && c.line.secret || "";
+    $("#lineRelay").value = c.line && c.line.relayToken || "";
+    // hubToken 以本地保存的为准，允许和 full 不一致时提示
+    if(!$("#hubToken").value && c.hubToken) $("#hubToken").value=c.hubToken;
+    setStatus("#stTg",  (c.telegram&&c.telegram.apiId&&c.telegram.apiHash), c.telegram&&c.telegram.session);
+    setStatus("#stSx",  c.safextm&&c.safextm.token);
+    setStatus("#stLine",(c.line&&c.line.token)||(c.line&&c.line.relayToken));
+    markClean();
+  }
+  function setStatus(sel, configured, extra){
+    const el=$(sel);
+    if(extra) { el.textContent="已登录"; el.className="status on"; }
+    else if(configured){ el.textContent="已配置"; el.className="status on"; }
+    else { el.textContent="未配置"; el.className="status"; }
+  }
+  function toggleProxy(){
+    const on=$("#tgProxyOn").checked;
+    $("#tgProxyBox").style.display = on?"grid":"none";
+    $("#tgSecretBox").style.display = on?"block":"none";
+  }
+  $("#tgProxyOn").onchange=()=>{toggleProxy();markDirty();};
+
+  // 标记修改
+  document.querySelectorAll("input,select").forEach(el=>{
+    if(el.id==="hubUrl"||el.id==="hubToken") return;
+    el.addEventListener("input",markDirty);
+    el.addEventListener("change",markDirty);
+  });
+
+  // 保存全部
+  $("#btnSave").onclick=async()=>{
+    const hubToken=$("#hubToken").value.trim();
+    const body={
+      hubToken,
+      telegram:{
+        apiId:Number($("#tgApiId").value)||0,
+        apiHash:$("#tgApiHash").value.trim(),
+        proxy:{
+          enabled:$("#tgProxyOn").checked,
+          type:$("#tgProxyType").value,
+          host:$("#tgProxyHost").value.trim(),
+          port:Number($("#tgProxyPort").value)||0,
+          secret:$("#tgProxySecret").value.trim()
+        }
+      },
+      safextm:{ token:$("#sxToken").value.trim() },
+      line:{
+        token:$("#lineToken").value.trim(),
+        secret:$("#lineSecret").value.trim(),
+        relayToken:$("#lineRelay").value.trim()
+      }
+    };
+    const r=await api("POST","/api/config",body);
+    if(r.ok && r.data && r.data.ok){
+      S.cfg={hub:$("#hubUrl").value.trim().replace(/\/+$/,""),token:hubToken};
+      window.settingsApi.saveConfig(S.cfg);
+      markClean(); toast("已保存到 Hub，点「重启采集器」生效","ok");
+      await loadAll();
+    } else toast("保存失败："+(r.data&&r.data.error||"未知错误"),"err");
+  };
+
+  // 状态
+  async function refreshState(){
+    const r=await api("GET","/api/state");
+    if(r.ok && r.data){ S.state=r.data; paintBadges(); }
+    const t=await api("GET","/api/totals");
+    if(t.ok && t.data){
+      $("#statusBox").innerHTML="状态版本 <span class='code'>rev "+(t.data.rev||0)+"</span> · 会话 "+(t.data.items||0)+
+        " · 未读 "+(t.data.unread||0)+"<br>各来源："+Object.keys(t.data.sources||{}).map(k=>k+"="+t.data.sources[k]).join("，");
+    }
+  }
+  function paintBadges(){
+    const src=(S.state&&S.state.sources)||{};
+    const map={tg:"telegram",sx:"safextm",line:"line"};
+    Object.keys(map).forEach(k=>{
+      const el=$("#badge"+k.charAt(0).toUpperCase()+k.slice(1));
+      if(!el)return;
+      const st=src[map[k]]||{};
+      el.className="badge "+(st.status==="online"?"on":st.status==="error"?"err":st.status==="connecting"?"warn":"");
+    });
+    const ok=Object.values(src).some(s=>s&&s.status==="online");
+    $("#badgeConn").className="badge "+(ok?"on":"");
+  }
+
+  // Telegram 登录状态机
+  async function refreshAuth(){
+    const r=await api("GET","/api/tg/auth");
+    if(r.ok && r.data){ S.auth=r.data; paintAuth(); }
+  }
+  function paintAuth(){
+    const a=S.auth||{};
+    const steps={
+      idle:"空闲",connecting:"连接中",wait_phone:"请输入手机号",wait_code:"请输入验证码",
+      wait_password:"请输入两步密码",ready:"已登录 ✓",fail:"登录失败"
+    };
+    $("#authStep").textContent = steps[a.step] || a.step || "未知";
+    $("#authErr").textContent = a.error || "";
+    const needInput = /^wait_/.test(a.step||"");
+    $("#authInput").disabled = !needInput;
+    $("#authInput").placeholder = needInput ? {
+      wait_phone:"+8613800138000",wait_code:"12345",wait_password:"两步密码"
+    }[a.step] : "当前无需输入";
+    if(needInput && a.step==="wait_phone" && a.phone) $("#authInput").value=a.phone;
+    if(a.step==="ready"||a.step==="fail"){ stopAuthPoll(); toast(a.step==="ready"?"Telegram 已登录":"登录失败："+(a.error||""), a.step==="ready"?"ok":"err"); }
+  }
+  function startAuthPoll(){
+    stopAuthPoll();
+    S.authTimer=setInterval(async()=>{ await refreshAuth(); },1500);
+  }
+  function stopAuthPoll(){ if(S.authTimer){clearInterval(S.authTimer);S.authTimer=null;} }
+  $("#btnAuthSubmit").onclick=async()=>{
+    const v=$("#authInput").value.trim();
+    if(!v){toast("请输入内容","err");return;}
+    const r=await api("POST","/api/tg/submit",{value:v});
+    if(r.ok && r.data && r.data.ok){ $("#authInput").value=""; startAuthPoll(); }
+    else toast("提交失败：请确认 Hub 正在等待输入","err");
+  };
+  $("#btnAuthReconnect").onclick=async()=>{
+    const r=await api("POST","/api/tg/reconnect",{});
+    if(r.ok && r.data && r.data.ok){toast("已发起登录，请稍候","ok");startAuthPoll();}
+    else toast("发起失败","err");
+  };
+
+  // 维护
+  $("#btnRestart").onclick=async()=>{
+    const r=await api("POST","/api/reconnect",{});
+    toast(r.ok&&r.data&&r.data.ok?"采集器已重启":"重启失败", r.ok?"ok":"err");
+    setTimeout(refreshState,1200);
+  };
+  $("#btnRefresh").onclick=async()=>{ await loadAll(); toast("状态已刷新","ok"); };
+  $("#btnPwa").onclick=()=>{
+    const u=$("#hubUrl").value.trim().replace(/\/+$/,"")+"/pwa/";
+    window.settingsApi.openExternal(u);
+  };
+  $("#tgLink").onclick=()=>window.settingsApi.openExternal("https://my.telegram.org/apps");
+  $("#lineGuide").onclick=()=>window.settingsApi.openGuide();
+
+  $("#btnClose").onclick=()=>window.settingsApi.close();
+
+  // 启动
+  async function boot(){
+    const cfg = await window.settingsApi.getConfig();
+    S.cfg = cfg || {hub:"",token:""};
+    fillConn();
+    if(S.cfg.hub && S.cfg.token){ await testConn(true); }
+    else setConn("","未连接");
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
