@@ -8,6 +8,12 @@
 
 ## 🤖 给 AI：从这里开始部署
 
+> **从 GitHub 克隆时务必切分支**：项目在 `tg-hub` 分支，仓库默认分支 `master` 是空的。
+> ```bash
+> git clone https://github.com/x783586-collab/x783586-collab.git
+> cd x783586-collab && git checkout tg-hub   # ← 不切分支会看到空仓库
+> ```
+
 如果你是 AI，请先读 **[AGENTS.md](AGENTS.md)** —— 里面有决策树、分步骤 SOP、验证命令、排障表和"不要碰的文件"清单。机器可读的组件/端口/API/配置字段清单在 **[deploy-manifest.json](deploy-manifest.json)**。
 
 人看部署说明读 **[HUB-README.md](HUB-README.md)**。

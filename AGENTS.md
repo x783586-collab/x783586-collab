@@ -21,8 +21,9 @@
 tg-hud/
 ├── AGENTS.md              ← 你正在读的文件（AI 入口）
 ├── deploy-manifest.json   ← 机器可读清单（组件/端口/端点/验证）
+├── README.md              ★ GitHub 仓库首页 / AI 部署第一入口（架构速览+快速启动）
 ├── HUB-README.md          ← 多端版人读文档（部署细节、API 表）
-├── README.md              ← 旧单端版文档（仅参考，非本次交付主体）
+├── README-legacy.md       旧单端版文档备份（仅参考，非本次交付）
 ├── LINE-API-REFERENCE.md  ← LINE 官方文档精读（答疑用）
 ├── FEATURES.md            ← Telegram 可拓展功能盘点（答疑用）
 ├── TDLIB-NOTES.md         ← 设计借鉴笔记（答疑用）
